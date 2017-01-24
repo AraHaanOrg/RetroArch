@@ -158,7 +158,7 @@ typedef struct retro_callbacks
    retro_input_poll_t poll_cb;
 } retro_callbacks_t;
 
-bool core_load(void);
+bool core_load(unsigned poll_type_behavior);
 
 bool core_unload(void);
 
@@ -166,7 +166,11 @@ bool core_set_default_callbacks(void *data);
 
 bool core_set_rewind_callbacks(void);
 
+#ifdef HAVE_NETWORKING
 bool core_set_netplay_callbacks(void);
+
+bool core_unset_netplay_callbacks(void);
+#endif
 
 bool core_set_poll_type(unsigned *type);
 

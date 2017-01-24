@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2015 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -31,8 +31,10 @@
 #include <compat/strl.h>
 #include <string/stdstring.h>
 
-#include "../../tasks/tasks_internal.h"
+#include "../input_config.h"
 #include "../input_driver.h"
+
+#include "../../tasks/tasks_internal.h"
 
 #include "../common/udev_common.h"
 
@@ -211,7 +213,6 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
    unsigned long keybit[NBITS(KEY_MAX)] = {0};
    unsigned long absbit[NBITS(ABS_MAX)] = {0};
    unsigned long ffbit[NBITS(FF_MAX)]   = {0};
-   autoconfig_params_t params           = {{0}};
    settings_t *settings                 = config_get_ptr();
 
    strlcpy(pad->ident, settings->input.device_names[p], sizeof(pad->ident));
@@ -281,19 +282,14 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
 
    if (!string_is_empty(pad->ident))
    {
-      strlcpy(params.name, pad->ident, sizeof(params.name));
-
-      params.idx             = p;
-      params.vid             = pad->vid;
-      params.pid             = pad->pid;
-      settings->input.pid[p] = params.pid;
-      settings->input.vid[p] = params.vid;
-
-      strlcpy(settings->input.device_names[p],
-            params.name, sizeof(settings->input.device_names[p]));
-      strlcpy(params.driver, udev_joypad.ident,
-            sizeof(params.driver));
-      input_autoconfigure_connect(&params);
+      if (!input_autoconfigure_connect(
+               pad->ident,
+               NULL,
+               udev_joypad.ident,
+               p,
+               pad->vid,
+               pad->pid))
+         input_config_set_device_name(p, pad->ident);
 
       ret = 1;
    }

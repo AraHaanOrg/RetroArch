@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -26,9 +26,7 @@
 #include "../menu_cbs.h"
 #include "../../msg_hash.h"
 
-#ifdef HAVE_LIBRETRODB
 #include "../../database_info.h"
-#endif
 
 #include "../../cores/internal_cores.h"
 
@@ -453,6 +451,131 @@ end:
    return ret;
 }
 
+
+#ifdef HAVE_LIBRETRODB
+static int deferred_push_cursor_manager_list_generic(
+      menu_displaylist_info_t *info, enum database_query_type type)
+{
+   int ret                       = -1;
+   char query[PATH_MAX_LENGTH];
+   struct string_list *str_list  = string_split(info->path, "|"); 
+
+   query[0] = '\0';
+
+   database_info_build_query_enum(query, sizeof(query), type, str_list->elems[0].data);
+
+   if (string_is_empty(query))
+      goto end;
+
+   strlcpy(info->path,   str_list->elems[1].data, sizeof(info->path));
+   strlcpy(info->path_b, str_list->elems[0].data, sizeof(info->path_b));
+   strlcpy(info->path_c, query, sizeof(info->path_c));
+
+   ret = deferred_push_dlist(info, DISPLAYLIST_DATABASE_QUERY);
+
+end:
+   string_list_free(str_list);
+   return ret;
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_max_users(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_MAX_USERS);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_famitsu_magazine_rating(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_FAMITSU_MAGAZINE_RATING);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_edge_magazine_rating(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_EDGE_MAGAZINE_RATING);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_edge_magazine_issue(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_EDGE_MAGAZINE_ISSUE);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_elspa_rating(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_ELSPA_RATING);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_cero_rating(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_CERO_RATING);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_pegi_rating(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_PEGI_RATING);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_bbfc_rating(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_BBFC_RATING);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_esrb_rating(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_ESRB_RATING);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_enhancement_hw(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_ENHANCEMENT_HW);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_franchise(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_FRANCHISE);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_publisher(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_PUBLISHER);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_developer(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_DEVELOPER);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_origin(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_ORIGIN);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_releasemonth(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_RELEASEDATE_MONTH);
+}
+
+static int deferred_push_cursor_manager_list_deferred_query_rdb_entry_releaseyear(
+      menu_displaylist_info_t *info)
+{
+   return deferred_push_cursor_manager_list_generic(info, DATABASE_QUERY_ENTRY_RELEASEDATE_YEAR);
+}
+#endif
+
+#if 0
 static int deferred_push_cursor_manager_list_deferred_query_subsearch(
       menu_displaylist_info_t *info)
 {
@@ -480,7 +603,7 @@ end:
 #endif
    return ret;
 }
-
+#endif
 
 static int general_push(menu_displaylist_info_t *info,
       unsigned id, enum menu_displaylist_ctl_state state)
@@ -528,17 +651,17 @@ static int general_push(menu_displaylist_info_t *info,
    switch (id)
    {
       case PUSH_ARCHIVE_OPEN_DETECT_CORE:
-  
-         if (!string_is_empty(list->all_ext))
+         if (list && !string_is_empty(list->all_ext))
             strlcpy(info->exts, list->all_ext, sizeof(info->exts));
          else if (system_menu->valid_extensions)
          {
-            if (*system_menu->valid_extensions)
+            if (!string_is_empty(system_menu->valid_extensions))
                strlcpy(info->exts, system_menu->valid_extensions,
                      sizeof(info->exts));
          }
          else
             strlcpy(info->exts, system->valid_extensions, sizeof(info->exts));
+
          break;
       case PUSH_ARCHIVE_OPEN:
          if (system_menu->valid_extensions)
@@ -567,8 +690,14 @@ static int general_push(menu_displaylist_info_t *info,
          }
          break;
       case PUSH_DETECT_CORE_LIST:
-         if (!string_is_empty(list->all_ext))
+         if (list && !string_is_empty(list->all_ext))
             strlcpy(info->exts, list->all_ext, sizeof(info->exts));
+         else if (system_menu->valid_extensions)
+         {
+            if (!string_is_empty(system_menu->valid_extensions))
+               strlcpy(info->exts, system_menu->valid_extensions,
+                     sizeof(info->exts));
+         }
          break;
    }
 
@@ -641,6 +770,16 @@ static int deferred_push_cursor_manager_list(menu_displaylist_info_t *info)
 static int deferred_push_content_collection_list(menu_displaylist_info_t *info)
 {
    return deferred_push_dlist(info, DISPLAYLIST_DATABASE_PLAYLISTS);
+}
+
+static int deferred_push_browse_url_list(menu_displaylist_info_t *info)
+{
+   return deferred_push_dlist(info, DISPLAYLIST_BROWSE_URL_LIST);
+}
+
+static int deferred_push_browse_url_start(menu_displaylist_info_t *info)
+{
+   return deferred_push_dlist(info, DISPLAYLIST_BROWSE_URL_START);
 }
 
 static int deferred_push_core_list(menu_displaylist_info_t *info)
@@ -717,6 +856,16 @@ static int menu_cbs_init_bind_deferred_push_compare_label(
       menu_file_list_cbs_t *cbs, 
       const char *label, uint32_t label_hash)
 {
+   if (string_is_equal(label, msg_hash_to_str(MENU_ENUM_LABEL_DEFERRED_BROWSE_URL_LIST)))
+   {
+      BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_browse_url_list);
+      return 0;
+   }
+   if (string_is_equal(label, msg_hash_to_str(MENU_ENUM_LABEL_DEFERRED_BROWSE_URL_START)))
+   {
+      BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_browse_url_start);
+      return 0;
+   }
    if (string_is_equal(label, msg_hash_to_str(MENU_ENUM_LABEL_DEFERRED_CORE_SETTINGS_LIST)))
    {
       BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_core_settings_list);
@@ -987,24 +1136,56 @@ static int menu_cbs_init_bind_deferred_push_compare_label(
             case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST:
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred);
                break;
+#ifdef HAVE_LIBRETRODB
             case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_PUBLISHER:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_DEVELOPER:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ORIGIN:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FRANCHISE:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ENHANCEMENT_HW:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ESRB_RATING:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_BBFC_RATING:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ELSPA_RATING:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_PEGI_RATING:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_CERO_RATING:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_RATING:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_ISSUE:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FAMITSU_MAGAZINE_RATING:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_MAX_USERS:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEMONTH:
-            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEYEAR:
-               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_subsearch);
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_publisher);
                break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_DEVELOPER:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_developer);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ORIGIN:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_origin);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FRANCHISE:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_franchise);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ENHANCEMENT_HW:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_enhancement_hw);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ESRB_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_esrb_rating);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_BBFC_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_bbfc_rating);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ELSPA_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_elspa_rating);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_PEGI_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_pegi_rating);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_CERO_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_cero_rating);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_edge_magazine_rating);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_ISSUE:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_edge_magazine_issue);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FAMITSU_MAGAZINE_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_famitsu_magazine_rating);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_MAX_USERS:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_max_users);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEMONTH:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_releasemonth);
+               break;
+            case MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEYEAR:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_releaseyear);
+               break;
+#endif
             case MENU_ENUM_LABEL_CORE_INFORMATION:
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_core_information);
                break;
@@ -1111,7 +1292,7 @@ static int menu_cbs_init_bind_deferred_push_compare_label(
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_core_settings_list);
                break;
             case MENU_ENUM_LABEL_DOWNLOADED_FILE_DETECT_CORE_LIST:
-            case MENU_ENUM_LABEL_DETECT_CORE_LIST:
+            case MENU_ENUM_LABEL_FAVORITES:
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_detect_core_list);
                break;
             default:
@@ -1244,27 +1425,59 @@ static int menu_cbs_init_bind_deferred_push_compare_label(
             case MENU_LABEL_DEFERRED_DATABASE_MANAGER_LIST:
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_database_manager_list_deferred);
                break;
+#ifdef HAVE_LIBRETRODB
             case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST:
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred);
                break;
             case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_PUBLISHER:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_DEVELOPER:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ORIGIN:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FRANCHISE:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ENHANCEMENT_HW:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ESRB_RATING:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_BBFC_RATING:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ELSPA_RATING:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_PEGI_RATING:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_CERO_RATING:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_RATING:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_ISSUE:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FAMITSU_MAGAZINE_RATING:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_MAX_USERS:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEMONTH:
-            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEYEAR:
-               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_subsearch);
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_publisher);
                break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_DEVELOPER:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_developer);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ORIGIN:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_origin);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FRANCHISE:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_franchise);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ENHANCEMENT_HW:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_enhancement_hw);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ESRB_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_esrb_rating);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_BBFC_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_bbfc_rating);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_ELSPA_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_elspa_rating);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_PEGI_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_pegi_rating);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_CERO_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_cero_rating);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_edge_magazine_rating);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_EDGE_MAGAZINE_ISSUE:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_edge_magazine_issue);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_FAMITSU_MAGAZINE_RATING:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_famitsu_magazine_rating);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_MAX_USERS:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_max_users);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEMONTH:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_releasemonth);
+               break;
+            case MENU_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_RELEASEYEAR:
+               BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_cursor_manager_list_deferred_query_rdb_entry_releaseyear);
+               break;
+#endif
             case MENU_LABEL_CORE_INFORMATION:
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_core_information);
                break;
@@ -1341,7 +1554,7 @@ static int menu_cbs_init_bind_deferred_push_compare_label(
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_content_history_path);
                break;
             case MENU_LABEL_DOWNLOADED_FILE_DETECT_CORE_LIST:
-            case MENU_LABEL_DETECT_CORE_LIST:
+            case MENU_LABEL_FAVORITES:
                BIND_ACTION_DEFERRED_PUSH(cbs, deferred_push_detect_core_list);
                break;
             default:

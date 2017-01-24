@@ -1,6 +1,7 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2014-2015 - Higor Euripedes
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2014-2017 - Higor Euripedes
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -20,8 +21,9 @@
 
 #include "SDL.h"
 
-#include "../../configuration.h"
+#include "../input_config.h"
 #include "../input_driver.h"
+
 #include "../../tasks/tasks_internal.h"
 #include "../../verbosity.h"
 
@@ -52,14 +54,17 @@ static sdl_joypad_t sdl_pads[MAX_USERS];
 static bool g_has_haptic;
 #endif
 
-static const char* sdl_pad_name(unsigned id)
+static const char *sdl_joypad_name(unsigned pad)
 {
+   if (pad >= MAX_USERS)
+      return NULL;
+
 #ifdef HAVE_SDL2
-   if (sdl_pads[id].controller)
-      return SDL_GameControllerNameForIndex(id);
-   return SDL_JoystickNameForIndex(id);
+   if (sdl_pads[pad].controller)
+      return SDL_GameControllerNameForIndex(pad);
+   return SDL_JoystickNameForIndex(pad);
 #else
-   return SDL_JoystickName(id);
+   return SDL_JoystickName(pad);
 #endif
 }
 
@@ -98,8 +103,6 @@ static void sdl_pad_connect(unsigned id)
    bool success               = false;
    int32_t product            = 0;
    int32_t vendor             = 0;
-   settings_t *settings       = config_get_ptr();
-   autoconfig_params_t params = {{0}};
 
 #ifdef HAVE_SDL2
    SDL_JoystickGUID guid;
@@ -131,8 +134,6 @@ static void sdl_pad_connect(unsigned id)
       return;
    }
 
-   strlcpy(settings->input.device_names[id], sdl_pad_name(id), sizeof(settings->input.device_names[id]));
-
 #ifdef HAVE_SDL2
    guid       = SDL_JoystickGetGUID(pad->joypad);
    guid_ptr   = (uint16_t*)guid.data;
@@ -144,17 +145,18 @@ static void sdl_pad_connect(unsigned id)
    product    = guid_ptr[1];
 #endif
 #endif
-   strlcpy(params.name,   sdl_pad_name(id), sizeof(params.name));
-   strlcpy(params.driver, sdl_joypad.ident, sizeof(params.driver));
 
-   params.idx = id;
-   params.vid = vendor;
-   params.pid = product;
-
-   input_autoconfigure_connect(&params);
+   if (!input_autoconfigure_connect(
+         sdl_joypad_name(id),
+         NULL,
+         sdl_joypad.ident,
+         id,
+         vendor,
+         product))
+      input_config_set_device_name(id, sdl_joypad_name(id));
 
    RARCH_LOG("[SDL]: Device #%u (%04x:%04x) connected: %s.\n", id, vendor,
-             product, sdl_pad_name(id));
+             product, sdl_joypad_name(id));
 
 #ifdef HAVE_SDL2
 
@@ -202,7 +204,6 @@ static void sdl_pad_connect(unsigned id)
 
 static void sdl_pad_disconnect(unsigned id)
 {
-   settings_t *settings = config_get_ptr();
 #ifdef HAVE_SDL2
    if (sdl_pads[id].haptic)
       SDL_HapticClose(sdl_pads[id].haptic);
@@ -219,8 +220,6 @@ static void sdl_pad_disconnect(unsigned id)
       SDL_JoystickClose(sdl_pads[id].joypad);
       input_autoconfigure_disconnect(id, sdl_joypad.ident);
    }
-
-   settings->input.device_names[id][0] = '\0';
 
    memset(&sdl_pads[id], 0, sizeof(sdl_pads[id]));
 }
@@ -444,14 +443,6 @@ static bool sdl_joypad_set_rumble(unsigned pad, enum retro_rumble_effect effect,
 static bool sdl_joypad_query_pad(unsigned pad)
 {
    return pad < MAX_USERS && sdl_pads[pad].joypad;
-}
-
-static const char *sdl_joypad_name(unsigned pad)
-{
-   if (pad >= MAX_USERS)
-      return NULL;
-
-   return sdl_pad_name(pad);
 }
 
 input_device_driver_t sdl_joypad = {

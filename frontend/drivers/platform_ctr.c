@@ -1,5 +1,6 @@
 /* RetroArch - A frontend for libretro.
- *  Copyright (C) 2014-2016 - Ali Bouhlel
+ *  Copyright (C) 2014-2017 - Ali Bouhlel
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  * RetroArch is free software: you can redistribute it and/or modify it under the terms
  * of the GNU General Public License as published by the Free Software Found-
@@ -32,7 +33,6 @@
 #endif
 
 #include "../frontend_driver.h"
-#include "../../configuration.h"
 #include "../../verbosity.h"
 #include "../../defaults.h"
 #include "../../paths.h"
@@ -390,7 +390,10 @@ static int frontend_ctr_parse_drive_list(void *data)
       return -1;
 
    menu_entries_append_enum(list,
-         "sdmc:/", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "sdmc:/",
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
 #endif
 
    return 0;

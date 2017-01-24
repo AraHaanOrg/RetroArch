@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2014-2016 - Ali Bouhlel ( aliaspider@gmail.com )
+ *  Copyright (C) 2014-2017 - Ali Bouhlel ( aliaspider@gmail.com )
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -27,7 +27,7 @@
 #include <memalign.h>
 #include <math/float_minmax.h>
 
-#include "../audio_resampler_driver.h"
+#include <audio/audio_resampler.h>
 
 /* Since SSE and NEON don't provide support for trigonometric functions
  * we approximate those with polynoms
@@ -540,7 +540,7 @@ static void resampler_CC_free(void *re_)
    (void)re_;
 }
 
-rarch_resampler_t CC_resampler = {
+retro_resampler_t CC_resampler = {
    resampler_CC_init,
    resampler_CC_process,
    resampler_CC_free,

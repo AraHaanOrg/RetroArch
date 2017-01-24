@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2013-2015 - pinumbernumber
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *  
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -38,7 +38,6 @@
 #include "../../tasks/tasks_internal.h"
 #include "../input_config.h"
 
-#include "../../configuration.h"
 #include "../../verbosity.h"
 
 /* Check if the definitions do not already exist.
@@ -139,7 +138,7 @@ static INLINE int pad_index_to_xuser_index(unsigned pad)
 /* Generic "XInput" instead of "Xbox 360", because there are
  * some other non-xbox third party PC controllers.
  */
-static const char* const XBOX_CONTROLLER_NAMES[4] = 
+static const char* const XBOX_CONTROLLER_NAMES[4] =
 {
    "XInput Controller (User 1)",
    "XInput Controller (User 2)",
@@ -147,22 +146,33 @@ static const char* const XBOX_CONTROLLER_NAMES[4] =
    "XInput Controller (User 4)"
 };
 
+static const char* const XBOX_ONE_CONTROLLER_NAMES[4] =
+{
+   "XBOX One Controller (User 1)",
+   "XBOX One Controller (User 2)",
+   "XBOX One Controller (User 3)",
+   "XBOX One Controller (User 4)"
+};
+
 const char *xinput_joypad_name(unsigned pad)
 {
    int xuser = pad_index_to_xuser_index(pad);
-
+   /* Use the real controller name for XBOX One controllers since
+      they are slightly different  */
    if (xuser < 0)
       return dinput_joypad.name(pad);
-   /* TODO: Different name if disconnected? */
+
+   if (strstr(dinput_joypad.name(pad), "Xbox One For Windows"))
+      return XBOX_ONE_CONTROLLER_NAMES[xuser];
+
    return XBOX_CONTROLLER_NAMES[xuser];
 }
 
 static bool xinput_joypad_init(void *data)
 {
-   unsigned i, autoconf_pad;
+   unsigned i, j;
    XINPUT_STATE dummy_state;
    const char *version = "1.4";
-   settings_t *settings = config_get_ptr();
 
    (void)data;
 
@@ -252,21 +262,18 @@ static bool xinput_joypad_init(void *data)
       return false;
    }
 
-   for (autoconf_pad = 0; autoconf_pad < MAX_USERS; autoconf_pad++)
+   for (j = 0; j < MAX_USERS; j++)
    {
-      if (pad_index_to_xuser_index(autoconf_pad) > -1)
+      if (pad_index_to_xuser_index(j) > -1)
       {
-         autoconfig_params_t params = {{0}};
-
-         strlcpy(settings->input.device_names[autoconf_pad],
-               xinput_joypad_name(autoconf_pad),
-               sizeof(settings->input.device_names[autoconf_pad]));
-
-         /* TODO - implement VID/PID? */
-         params.idx = autoconf_pad;
-         strlcpy(params.name, xinput_joypad_name(autoconf_pad), sizeof(params.name));
-         strlcpy(params.driver, xinput_joypad.ident, sizeof(params.driver));
-         input_autoconfigure_connect(&params);
+         if (!input_autoconfigure_connect(
+               xinput_joypad_name(j),
+               NULL,
+               xinput_joypad.ident,
+               j,
+               0,
+               0))
+            input_config_set_device_name(j, xinput_joypad_name(j));
       }
    }
 

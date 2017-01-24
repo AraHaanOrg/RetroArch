@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -21,7 +22,6 @@
 #include <alsa/asoundlib.h>
 
 #include "../audio_driver.h"
-#include "../../configuration.h"
 #include "../../verbosity.h"
 
 typedef struct alsa
@@ -54,7 +54,9 @@ static bool find_float_format(snd_pcm_t *pcm, void *data)
    return false;
 }
 
-static void *alsa_init(const char *device, unsigned rate, unsigned latency)
+static void *alsa_init(const char *device, unsigned rate, unsigned latency,
+      unsigned block_frames,
+      unsigned *new_rate)
 {
    snd_pcm_format_t format;
    snd_pcm_uframes_t buffer_size;
@@ -269,7 +271,7 @@ static void alsa_set_nonblock_state(void *data, bool state)
    alsa->nonblock = state;
 }
 
-static bool alsa_start(void *data)
+static bool alsa_start(void *data, bool is_shutdown)
 {
    alsa_t *alsa = (alsa_t*)data;
 

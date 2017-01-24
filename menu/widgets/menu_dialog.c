@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2016 - Brad Parker
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2016-2017 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -35,6 +35,7 @@
 
 #include "../../tasks/tasks_internal.h"
 #include "../../input/input_config.h"
+#include "../../performance_counters.h"
 
 static bool                  menu_dialog_pending_push   = false;
 static bool                  menu_dialog_active         = false;
@@ -54,31 +55,20 @@ int menu_dialog_iterate(char *s, size_t len, const char *label)
    {
       case MENU_DIALOG_WELCOME:
          {
-            static int64_t timeout_end;
-            int64_t timeout;
-            static bool timer_begin = false;
-            static bool timer_end   = false;
-            int64_t current         = cpu_features_get_time_usec();
+            static rarch_timer_t timer;
 
-            if (!timer_begin)
-            {
-               timeout_end = cpu_features_get_time_usec() +
-                  3 /* seconds */ * 1000000;
-               timer_begin = true;
-               timer_end   = false;
-            }
+            if (!rarch_timer_is_running(&timer))
+               rarch_timer_begin(&timer, 3);
 
-            timeout = (timeout_end - current) / 1000000;
+            rarch_timer_tick(&timer);
 
             menu_hash_get_help_enum(
                   MENU_ENUM_LABEL_WELCOME_TO_RETROARCH,
                   s, len);
 
-            if (!timer_end && timeout <= 0)
+            if (!timer.timer_end && rarch_timer_has_expired(&timer))
             {
-               timer_end   = true;
-               timer_begin = false;
-               timeout_end = 0;
+               rarch_timer_end(&timer);
                do_exit     = true;
             }
          }

@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (c) 2011-2016 - Daniel De Matteis
+ *  Copyright (c) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -15,7 +15,8 @@
 
 #include <compat/strl.h>
 
-#include "../../configuration.h"
+#include <retro_miscellaneous.h>
+
 #include "../../verbosity.h"
 
 #include "drm_common.h"
@@ -63,12 +64,11 @@ bool drm_get_resources(int fd)
    return true;
 }
 
-bool drm_get_connector(int fd)
+bool drm_get_connector(int fd, video_frame_info_t *video_info)
 {
    unsigned i;
    unsigned monitor_index = 0;
-   settings_t *settings   = config_get_ptr();
-   unsigned monitor       = MAX(settings->video.monitor_index, 1);
+   unsigned monitor       = MAX(video_info->monitor_index, 1);
 
    /* Enumerate all connectors. */
 

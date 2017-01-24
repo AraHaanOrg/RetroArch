@@ -36,6 +36,10 @@
 #include "cheevos.h"
 #endif
 
+#ifdef HAVE_NETWORKING
+#include "network/netplay/netplay.h"
+#endif
+
 #include "dynamic.h"
 #include "command.h"
 
@@ -239,16 +243,18 @@ static bool load_dynamic_core(void)
    RARCH_LOG("Loading dynamic libretro core from: \"%s\"\n",
          path_get(RARCH_PATH_CORE));
    lib_handle = dylib_load(path_get(RARCH_PATH_CORE));
-   if (!lib_handle)
-   {
-      RARCH_ERR("Failed to open libretro core: \"%s\"\n",
-            path_get(RARCH_PATH_CORE));
-      RARCH_ERR("Error(s): %s\n", dylib_error());
-      runloop_msg_queue_push(msg_hash_to_str(MSG_FAILED_TO_OPEN_LIBRETRO_CORE), 1, 180, true);
-      return false;
-   }
 
-   return true;
+   if (lib_handle)
+      return true;
+
+   RARCH_ERR("Failed to open libretro core: \"%s\"\n",
+         path_get(RARCH_PATH_CORE));
+   RARCH_ERR("Error(s): %s\n", dylib_error());
+
+   runloop_msg_queue_push(msg_hash_to_str(MSG_FAILED_TO_OPEN_LIBRETRO_CORE), 1, 180, true);
+   retroarch_fail(1, "load_dynamic_core()");
+
+   return false;
 }
 
 static dylib_t libretro_get_system_info_lib(const char *path,
@@ -319,8 +325,11 @@ static bool libretro_get_system_info_static(struct retro_system_info *info,
    retro_get_system_info(&dummy_info);
    memcpy(info, &dummy_info, sizeof(*info));
 
-   info->library_name    = strdup(dummy_info.library_name);
-   info->library_version = strdup(dummy_info.library_version);
+   if (!string_is_empty(dummy_info.library_name))
+      info->library_name    = strdup(dummy_info.library_name);
+   if (!string_is_empty(dummy_info.library_version))
+      info->library_version    = strdup(dummy_info.library_version);
+
    if (dummy_info.valid_extensions)
       info->valid_extensions = strdup(dummy_info.valid_extensions);
    return true;
@@ -344,16 +353,21 @@ bool libretro_get_system_info(const char *path,
 {
 #ifdef HAVE_DYNAMIC
    struct retro_system_info dummy_info = {0};
-   dylib_t lib = libretro_get_system_info_lib(path,
-         &dummy_info, load_no_content);
+   dylib_t lib                         = libretro_get_system_info_lib(
+         path, &dummy_info, load_no_content);
+
    if (!lib)
       return false;
 
    memcpy(info, &dummy_info, sizeof(*info));
-   info->library_name    = strdup(dummy_info.library_name);
-   info->library_version = strdup(dummy_info.library_version);
+   if (!string_is_empty(dummy_info.library_name))
+      info->library_name        = strdup(dummy_info.library_name);
+   if (!string_is_empty(dummy_info.library_version))
+      info->library_version     = strdup(dummy_info.library_version);
+
    if (dummy_info.valid_extensions)
-      info->valid_extensions = strdup(dummy_info.valid_extensions);
+      info->valid_extensions    = strdup(dummy_info.valid_extensions);
+
    dylib_close(lib);
 #else
    if (!libretro_get_system_info_static(info, load_no_content))
@@ -804,11 +818,13 @@ static bool mmap_preprocess_descriptors(rarch_memory_descriptor_t *first, unsign
          if ((desc->core.len & (desc->core.len - 1)) != 0)
             return false;
          
-         desc->core.select = top_addr & ~mmap_inflate(mmap_add_bits_down(desc->core.len - 1), desc->core.disconnect);
+         desc->core.select = top_addr & ~mmap_inflate(mmap_add_bits_down(desc->core.len - 1),
+               desc->core.disconnect);
       }
       
       if (desc->core.len == 0)
-         desc->core.len = mmap_add_bits_down(mmap_reduce(top_addr & ~desc->core.select, desc->core.disconnect)) + 1;
+         desc->core.len = mmap_add_bits_down(mmap_reduce(top_addr & ~desc->core.select,
+                  desc->core.disconnect)) + 1;
       
       if (desc->core.start & ~desc->core.select)
          return false;
@@ -975,7 +991,8 @@ bool rarch_environment_cb(unsigned cmd, void *data)
          {
             struct retro_variable *var = (struct retro_variable*)data;
 
-            if (var) {
+            if (var)
+            {
                RARCH_LOG("Environ GET_VARIABLE %s: not implemented.\n", var->key);
                var->value = NULL;
             }
@@ -1039,7 +1056,9 @@ bool rarch_environment_cb(unsigned cmd, void *data)
             const char *fullpath = path_get(RARCH_PATH_CONTENT);
             if (!string_is_empty(fullpath))
             {
-               char temp_path[PATH_MAX_LENGTH] = {0};
+               char temp_path[PATH_MAX_LENGTH];
+
+               temp_path[0] = '\0';
 
                RARCH_WARN("SYSTEM DIR is empty, assume CONTENT DIR %s\n",
                      fullpath);
@@ -1286,6 +1305,12 @@ bool rarch_environment_cb(unsigned cmd, void *data)
 #ifdef HAVE_THREADS
       {
          RARCH_LOG("Environ SET_AUDIO_CALLBACK.\n");
+#ifdef HAVE_NETWORKING
+         if (netplay_driver_ctl(RARCH_NETPLAY_CTL_IS_ENABLED, NULL))
+            return false;
+#endif
+         if (recording_driver_get_data_ptr()) /* A/V sync is a must. */
+            return false;
          audio_driver_set_callback(data);
       }
 #endif
@@ -1433,12 +1458,17 @@ bool rarch_environment_cb(unsigned cmd, void *data)
 
          if (system)
          {
+            struct retro_subsystem_info *info_ptr = NULL;
             free(system->subsystem.data);
-            system->subsystem.data = (struct retro_subsystem_info*)
-               calloc(i, sizeof(*system->subsystem.data));
+            system->subsystem.data = NULL;
 
-            if (!system->subsystem.data)
+            info_ptr = (struct retro_subsystem_info*)
+               calloc(i, sizeof(*info_ptr));
+
+            if (!info_ptr)
                return false;
+
+            system->subsystem.data = info_ptr;
 
             memcpy(system->subsystem.data, info,
                   i * sizeof(*system->subsystem.data));
@@ -1465,12 +1495,16 @@ bool rarch_environment_cb(unsigned cmd, void *data)
 
          if (system)
          {
+            struct retro_controller_info *info_ptr = NULL;
+
             free(system->ports.data);
-            system->ports.data = (struct retro_controller_info*)
-               calloc(i, sizeof(*system->ports.data));
-            if (!system->ports.data)
+            system->ports.data = NULL;
+
+            info_ptr = (struct retro_controller_info*)calloc(i, sizeof(*info_ptr));
+            if (!info_ptr)
                return false;
 
+            system->ports.data = info_ptr;
             memcpy(system->ports.data, info,
                   i * sizeof(*system->ports.data));
             system->ports.size = i;
@@ -1497,7 +1531,7 @@ bool rarch_environment_cb(unsigned cmd, void *data)
             if (!descriptors)
                return false;
 
-            system->mmaps.descriptors = descriptors;
+            system->mmaps.descriptors     = descriptors;
             system->mmaps.num_descriptors = mmaps->num_descriptors;
 
             for (i = 0; i < mmaps->num_descriptors; i++)

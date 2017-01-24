@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -71,9 +71,10 @@ struct retro_keybind
 
 typedef struct input_driver
 {
-   void *(*init)(void);
+   void *(*init)(const char *joypad_driver);
    void (*poll)(void *data);
    int16_t (*input_state)(void *data,
+         rarch_joypad_info_t joypad_info,
          const struct retro_keybind **retro_keybinds,
          unsigned port, unsigned device, unsigned index, unsigned id);
    bool (*meta_key_pressed)(void *data, int key);
@@ -314,7 +315,6 @@ extern input_driver_t input_android;
 extern input_driver_t input_sdl;
 extern input_driver_t input_dinput;
 extern input_driver_t input_x;
-extern input_driver_t input_wayland;
 extern input_driver_t input_ps3;
 extern input_driver_t input_psp;
 extern input_driver_t input_ctr;
@@ -327,6 +327,7 @@ extern input_driver_t input_udev;
 extern input_driver_t input_cocoa;
 extern input_driver_t input_qnx;
 extern input_driver_t input_rwebinput;
+extern input_driver_t input_dos;
 extern input_driver_t input_null;
 
 RETRO_END_DECLS

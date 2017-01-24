@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2014-2015 - Ali Bouhlel
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2014-2017 - Ali Bouhlel
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -23,8 +23,6 @@
 
 #include "../../tasks/tasks_internal.h"
 
-#include "../../configuration.h"
-#include "../../configuration.h"
 #include "../../retroarch.h"
 #include "../../command.h"
 #include "string.h"
@@ -45,19 +43,15 @@ static const char *ctr_joypad_name(unsigned pad)
 
 static void ctr_joypad_autodetect_add(unsigned autoconf_pad)
 {
-   settings_t       *settings = config_get_ptr();
-   autoconfig_params_t params = {{0}};
-
-   strlcpy(settings->input.device_names[autoconf_pad],
+   if (!input_autoconfigure_connect(
          ctr_joypad_name(autoconf_pad),
-         sizeof(settings->input.device_names[autoconf_pad]));
-
-   /* TODO - implement VID/PID? */
-   params.idx = autoconf_pad;
-   strlcpy(params.name, ctr_joypad_name(autoconf_pad), sizeof(params.name));
-   strlcpy(params.driver, ctr_joypad.ident, sizeof(params.driver));
-
-   input_autoconfigure_connect(&params);
+         NULL,
+         ctr_joypad.ident,
+         autoconf_pad,
+         0,
+         0
+         ))
+      input_config_set_device_name(autoconf_pad, ctr_joypad_name(autoconf_pad));
 }
 
 static bool ctr_joypad_init(void *data)

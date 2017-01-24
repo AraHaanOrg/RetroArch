@@ -125,6 +125,7 @@ typedef struct settings
       char driver[32];
       bool pause_libretro;
       bool timedate_enable;
+      bool battery_level_enable;
       bool core_enable;
       bool dynamic_wallpaper_enable;
       unsigned thumbnails;
@@ -198,6 +199,7 @@ typedef struct settings
          bool     show_music;
          bool     show_video;
          bool     show_history;
+         bool     show_add;
       } xmb;
 
       struct
@@ -344,6 +346,8 @@ typedef struct settings
    } cheevos;
 #endif
 
+   char browse_url[4096];
+
    int state_slot;
 
    bool bundle_assets_extract_enable;
@@ -401,11 +405,12 @@ typedef struct settings
    {
       char server[255];
       unsigned port;
-      unsigned delay_frames;
-      unsigned check_frames;
-      bool is_spectate;
+      bool stateless_mode;
+      int check_frames;
       bool swap_input;
       bool nat_traversal;
+      char password[128];
+      char spectate_password[128];
    } netplay;
 #endif
 
@@ -416,6 +421,7 @@ typedef struct settings
    bool auto_screenshot_filename;
 
    bool history_list_enable;
+   bool playlist_entry_remove;
    bool rewind_enable;
    size_t rewind_buffer_size;
    unsigned rewind_granularity;
@@ -636,7 +642,7 @@ bool config_save_overrides(int override_type);
 /* Replaces currently loaded configuration file with
  * another one. Will load a dummy core to flush state
  * properly. */
-bool config_replace(char *path);
+bool config_replace(bool config_save_on_exit, char *path);
 
 bool config_init(void);
 

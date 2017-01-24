@@ -22,9 +22,9 @@
 #include <ctype.h>
 #include <errno.h>
 
-#include <retro_inline.h>
 #include <boolean.h>
 #include <lists/string_list.h>
+#include <string/stdstring.h>
 #include <libretro.h>
 
 #ifdef HAVE_CONFIG_H
@@ -35,26 +35,24 @@
 #include "network/netplay/netplay.h"
 #endif
 
-#include "configuration.h"
-#include "dynamic.h"
 #include "core.h"
+#include "dynamic.h"
 #include "msg_hash.h"
 #include "managers/state_manager.h"
-#include "runloop.h"
 #include "verbosity.h"
 #include "gfx/video_driver.h"
 #include "audio/audio_driver.h"
-#include "cheevos.h"
 
-static struct retro_core_t core;
-static unsigned            core_poll_type;
-static bool                core_inited         = false;
-static bool                core_symbols_inited = false;
-static bool                core_game_loaded    = false;
-static bool                core_input_polled   = false;
-static bool   core_has_set_input_descriptors   = false;
-static struct retro_callbacks retro_ctx;
-static uint64_t            core_serialization_quirks_v = 0;
+static unsigned            core_poll_type                 = POLL_TYPE_EARLY;
+static bool                core_inited                    = false;
+static bool                core_symbols_inited            = false;
+static bool                core_game_loaded               = false;
+static bool                core_input_polled              = false;
+static bool                core_has_set_input_descriptors = false;
+static uint64_t            core_serialization_quirks_v    = 0;
+
+static struct              retro_callbacks retro_ctx;
+static struct              retro_core_t core;
 
 static void core_input_state_poll_maybe(void)
 {
@@ -184,7 +182,7 @@ bool core_set_rewind_callbacks(void)
  * core_set_netplay_callbacks:
  *
  * Set the I/O callbacks to use netplay's interceding callback system. Should
- * only be called once.
+ * only be called while initializing netplay.
  **/
 bool core_set_netplay_callbacks(void)
 {
@@ -196,6 +194,26 @@ bool core_set_netplay_callbacks(void)
    core.retro_set_audio_sample(audio_sample_net);
    core.retro_set_audio_sample_batch(audio_sample_batch_net);
    core.retro_set_input_state(input_state_net);
+
+   return true;
+}
+
+/**
+ * core_unset_netplay_callbacks
+ *
+ * Unset the I/O callbacks from having used netplay's interceding callback
+ * system. Should only be called while uninitializing netplay.
+ */
+bool core_unset_netplay_callbacks(void)
+{
+   struct retro_callbacks cbs;
+   if (!core_set_default_callbacks(&cbs))
+      return false;
+
+   core.retro_set_video_refresh(cbs.frame_cb);
+   core.retro_set_audio_sample(cbs.sample_cb);
+   core.retro_set_audio_sample_batch(cbs.sample_batch_cb);
+   core.retro_set_input_state(cbs.state_cb);
 
    return true;
 }
@@ -265,7 +283,7 @@ bool core_load_game(retro_ctx_load_content_info_t *load_info)
    if (load_info && load_info->special)
       core_game_loaded = core.retro_load_game_special(
             load_info->special->id, load_info->info, load_info->content->size);
-   else if (load_info && *load_info->content->elems[0].data)
+   else if (load_info && !string_is_empty(load_info->content->elems[0].data))
       core_game_loaded = core.retro_load_game(load_info->info);
    else
       core_game_loaded = core.retro_load_game(NULL);
@@ -356,9 +374,6 @@ bool core_get_system_av_info(struct retro_system_av_info *av_info)
 bool core_reset(void)
 {
    core.retro_reset();
-#ifdef HAVE_CHEEVOS
-   cheevos_reset_game();
-#endif
    return true;
 }
 
@@ -390,7 +405,10 @@ bool core_run(void)
 #ifdef HAVE_NETWORKING
    if (!netplay_driver_ctl(RARCH_NETPLAY_CTL_PRE_FRAME, NULL))
    {
-      /* Paused due to Netplay */
+      /* Paused due to netplay. We must poll and display something so that a
+       * netplay peer pausing doesn't just hang. */
+      input_poll();
+      video_driver_cached_frame();
       return true;
    }
 #endif
@@ -419,11 +437,9 @@ bool core_run(void)
    return true;
 }
 
-bool core_load(void)
+bool core_load(unsigned poll_type_behavior)
 {
-   settings_t *settings = config_get_ptr();
-
-   core_poll_type = settings->input.poll_type_behavior;
+   core_poll_type = poll_type_behavior;
 
    if (!core_verify_api_version())
       return false;
@@ -431,7 +447,6 @@ bool core_load(void)
       return false;
 
    core_get_system_av_info(video_viewport_get_system_av_info());
-   runloop_ctl(RUNLOOP_CTL_SET_FRAME_LIMIT, NULL);
 
    return true;
 }

@@ -110,13 +110,15 @@ static bool init_playback(bsv_movie_t *handle, const char *path)
 
    if (state_size)
    {
-      retro_ctx_serialize_info_t serial_info;
       retro_ctx_size_info_t info;
+      retro_ctx_serialize_info_t serial_info;
+      uint8_t *buf       = (uint8_t*)malloc(state_size);
 
-      handle->state      = (uint8_t*)malloc(state_size);
-      handle->state_size = state_size;
-      if (!handle->state)
+      if (!buf)
          return false;
+
+      handle->state      = buf;
+      handle->state_size = state_size;
 
       if (fread(handle->state, 1, state_size, handle->file) != state_size)
       {
@@ -208,6 +210,7 @@ static void bsv_movie_free(bsv_movie_t *handle)
 static bsv_movie_t *bsv_movie_init(const char *path,
       enum rarch_movie_type type)
 {
+   size_t *frame_pos   = NULL;
    bsv_movie_t *handle = (bsv_movie_t*)calloc(1, sizeof(*handle));
    if (!handle)
       return NULL;
@@ -222,8 +225,10 @@ static bsv_movie_t *bsv_movie_init(const char *path,
 
    /* Just pick something really large 
     * ~1 million frames rewind should do the trick. */
-   if (!(handle->frame_pos = (size_t*)calloc((1 << 20), sizeof(size_t))))
+   if (!(frame_pos = (size_t*)calloc((1 << 20), sizeof(size_t))))
       goto error; 
+
+   handle->frame_pos       = frame_pos;
 
    handle->frame_pos[0]    = handle->min_file_pos;
    handle->frame_mask      = (1 << 20) - 1;
@@ -236,15 +241,16 @@ error:
 }
 
 /* Used for rewinding while playback/record. */
-static void bsv_movie_set_frame_start(bsv_movie_t *handle)
+void bsv_movie_set_frame_start(void)
 {
-   if (!handle)
-      return;
-   handle->frame_pos[handle->frame_ptr] = ftell(handle->file);
+   bsv_movie_t *handle = bsv_movie_state.movie;
+   if (handle)
+      handle->frame_pos[handle->frame_ptr] = ftell(handle->file);
 }
 
-static void bsv_movie_set_frame_end(bsv_movie_t *handle)
+void bsv_movie_set_frame_end(void)
 {
+   bsv_movie_t *handle = bsv_movie_state.movie;
    if (!handle)
       return;
 
@@ -350,6 +356,17 @@ static void bsv_movie_init_state(void)
    }
 }
 
+bool bsv_movie_get_input(int16_t *bsv_data)
+{
+   bsv_movie_t *handle = bsv_movie_state.movie;
+   if (fread(bsv_data, sizeof(int16_t), 1, handle->file) != 1)
+      return false;
+
+   *bsv_data = swap_if_big16(*bsv_data);
+
+   return true;
+}
+
 bool bsv_movie_ctl(enum bsv_ctl_state state, void *data)
 {
    switch (state)
@@ -376,8 +393,6 @@ bool bsv_movie_ctl(enum bsv_ctl_state state, void *data)
       case BSV_MOVIE_CTL_UNSET_START_PLAYBACK:
          bsv_movie_state.movie_start_playback = false;
          break;
-      case BSV_MOVIE_CTL_END:
-         return bsv_movie_state.movie_end;
       case BSV_MOVIE_CTL_SET_END_EOF:
          bsv_movie_state.eof_exit = true;
          break;
@@ -400,24 +415,8 @@ bool bsv_movie_ctl(enum bsv_ctl_state state, void *data)
       case BSV_MOVIE_CTL_INIT:
          bsv_movie_init_state();
          break;
-      case BSV_MOVIE_CTL_SET_FRAME_START:
-         bsv_movie_set_frame_start(bsv_movie_state.movie);
-         break;
-      case BSV_MOVIE_CTL_SET_FRAME_END:
-         bsv_movie_set_frame_end(bsv_movie_state.movie);
-         break;
       case BSV_MOVIE_CTL_FRAME_REWIND:
          bsv_movie_frame_rewind(bsv_movie_state.movie);
-         break;
-      case BSV_MOVIE_CTL_GET_INPUT:
-         {
-            int16_t *bsv_data = (int16_t*)data;
-            bsv_movie_t *handle = bsv_movie_state.movie;
-            if (fread(bsv_data, sizeof(int16_t), 1, handle->file) != 1)
-               return false;
-
-            *bsv_data = swap_if_big16(*bsv_data);
-         }
          break;
       case BSV_MOVIE_CTL_SET_INPUT:
          {
@@ -465,7 +464,7 @@ bool bsv_movie_init_handle(const char *path,
 /* Checks if movie is being played back. */
 static bool runloop_check_movie_playback(void)
 {
-   if (!bsv_movie_ctl(BSV_MOVIE_CTL_END, NULL))
+   if (!bsv_movie_state.movie_end)
       return false;
 
    runloop_msg_queue_push(

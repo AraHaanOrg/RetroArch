@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -22,7 +23,6 @@
 #include <retro_endianness.h>
 
 #include "../audio_driver.h"
-#include "../../configuration.h"
 #include "../../verbosity.h"
 
 typedef struct
@@ -125,6 +125,7 @@ static void stream_latency_update_cb(pa_stream *s, void *data)
 
 static void underrun_update_cb(pa_stream *s, void *data)
 {
+#if 0
    pa_t *pa = (pa_t*)data;
 
    (void)s;
@@ -132,6 +133,7 @@ static void underrun_update_cb(pa_stream *s, void *data)
    RARCH_LOG("[PulseAudio]: Underrun (Buffer: %u, Writable size: %u).\n",
          (unsigned)pa->buffer_size,
          (unsigned)pa_stream_writable_size(pa->stream));
+#endif
 }
 
 static void buffer_attr_cb(pa_stream *s, void *data)
@@ -141,10 +143,15 @@ static void buffer_attr_cb(pa_stream *s, void *data)
    if (server_attr)
       pa->buffer_size = server_attr->tlength;
 
+#if 0
    RARCH_LOG("[PulseAudio]: Got new buffer size %u.\n", (unsigned)pa->buffer_size);
+#endif
 }
 
-static void *pulse_init(const char *device, unsigned rate, unsigned latency)
+static void *pulse_init(const char *device, unsigned rate,
+      unsigned latency, 
+      unsigned block_frames,
+      unsigned *new_rate)
 {
    pa_sample_spec               spec;
    pa_buffer_attr        buffer_attr = {0};
@@ -284,7 +291,7 @@ static bool pulse_alive(void *data)
    return !pa->is_paused;
 }
 
-static bool pulse_start(void *data)
+static bool pulse_start(void *data, bool is_shutdown)
 {
    bool ret;
    pa_t *pa = (pa_t*)data;

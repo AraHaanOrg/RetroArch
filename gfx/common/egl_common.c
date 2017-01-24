@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (c) 2011-2016 - Daniel De Matteis
+ *  Copyright (c) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -44,16 +44,52 @@ void egl_report_error(void)
          str = "EGL_SUCCESS";
          break;
 
-      case EGL_BAD_DISPLAY:
-         str = "EGL_BAD_DISPLAY";
+      case EGL_BAD_ACCESS:
+         str = "EGL_BAD_ACCESS";
          break;
 
-      case EGL_BAD_SURFACE:
-         str = "EGL_BAD_SURFACE";
+      case EGL_BAD_ALLOC:
+         str = "EGL_BAD_ALLOC";
+         break;
+
+      case EGL_BAD_ATTRIBUTE:
+         str = "EGL_BAD_ATTRIBUTE";
+         break;
+
+      case EGL_BAD_CONFIG:
+         str = "EGL_BAD_CONFIG";
          break;
 
       case EGL_BAD_CONTEXT:
          str = "EGL_BAD_CONTEXT";
+         break;
+
+      case EGL_BAD_CURRENT_SURFACE:
+         str = "EGL_BAD_CURRENT_SURFACE";
+         break;
+
+      case EGL_BAD_DISPLAY:
+         str = "EGL_BAD_DISPLAY";
+         break;
+
+      case EGL_BAD_MATCH:
+         str = "EGL_BAD_MATCH";
+         break;
+
+      case EGL_BAD_NATIVE_PIXMAP:
+         str = "EGL_BAD_NATIVE_PIXMAP";
+         break;
+
+      case EGL_BAD_NATIVE_WINDOW:
+         str = "EGL_BAD_NATIVE_WINDOW";
+         break;
+
+      case EGL_BAD_PARAMETER:
+         str = "EGL_BAD_PARAMETER";
+         break;
+
+      case EGL_BAD_SURFACE:
+         str = "EGL_BAD_SURFACE";
          break;
 
       default:

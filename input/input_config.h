@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -18,8 +18,6 @@
 #define INPUT_CONFIG_H__
 
 #include <stdint.h>
-
-#include <file/config_file.h>
 
 #include "input_driver.h"
 
@@ -59,15 +57,21 @@ const char *input_config_get_prefix(unsigned user, bool meta);
  **/
 unsigned input_config_translate_str_to_bind_id(const char *str);
 
-void input_config_parse_key(config_file_t *conf,
+void input_config_parse_key(void *data,
       const char *prefix, const char *btn,
       struct retro_keybind *bind);
 
-void input_config_parse_joy_button(config_file_t *conf, const char *prefix,
+void input_config_parse_joy_button(void *data, const char *prefix,
       const char *btn, struct retro_keybind *bind);
 
-void input_config_parse_joy_axis(config_file_t *conf, const char *prefix,
+void input_config_parse_joy_axis(void *data, const char *prefix,
       const char *axis, struct retro_keybind *bind);
+
+void input_config_set_device_name(unsigned port, const char *name);
+
+void input_config_set_device(unsigned port, unsigned id);
+
+const char *input_config_get_device_name(unsigned port);
 
 const struct retro_keybind *input_config_get_bind_auto(unsigned port, unsigned id);
 

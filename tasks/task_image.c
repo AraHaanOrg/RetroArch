@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -25,6 +25,7 @@
 #include <lists/string_list.h>
 #include <rhash.h>
 
+#include "../gfx/video_driver.h"
 #include "../file_path_special.h"
 #include "../verbosity.h"
 
@@ -64,12 +65,17 @@ static int cb_image_menu_upload_generic(void *data, size_t len)
    if (!image)
       return -1;
 
-   if (image->processing_final_state == IMAGE_PROCESS_ERROR ||
-         image->processing_final_state == IMAGE_PROCESS_ERROR_END)
-      return -1;
+   switch (image->processing_final_state)
+   {
+      case IMAGE_PROCESS_ERROR:
+      case IMAGE_PROCESS_ERROR_END:
+         return -1;
+      default:
+         break;
+   }
 
    image_texture_set_color_shifts(&r_shift, &g_shift, &b_shift,
-         &a_shift);
+         &a_shift, &image->ti);
 
    image_texture_color_convert(r_shift, g_shift, b_shift,
          a_shift, &image->ti);
@@ -118,16 +124,24 @@ static int task_image_process(
 
 static int cb_image_menu_generic(nbio_handle_t *nbio)
 {
-   int retval;
-   unsigned width = 0, height = 0;
+   int retval                      = 0;
+   unsigned width                  = 0;
+   unsigned height                 = 0;
    struct nbio_image_handle *image = (struct nbio_image_handle*)nbio->data;
 
    if (!image)
       return -1;
 
    retval = task_image_process(nbio, &width, &height);
-   if ((retval == IMAGE_PROCESS_ERROR) || (retval == IMAGE_PROCESS_ERROR_END))
-      return -1;
+
+   switch (retval)
+   {
+      case IMAGE_PROCESS_ERROR:
+      case IMAGE_PROCESS_ERROR_END:
+         return -1;
+      default:
+         break;
+   }
 
    image->is_blocking_on_processing         = (retval != IMAGE_PROCESS_END);
    image->is_finished                       = (retval == IMAGE_PROCESS_END);
@@ -150,8 +164,10 @@ static int cb_image_menu_thumbnail(void *data, size_t len)
 
 static int task_image_iterate_process_transfer(nbio_handle_t *nbio)
 {
-   int retval = 0;
-   unsigned i, width = 0, height = 0;
+   unsigned i;
+   int retval                      = 0;
+   unsigned width                  = 0;
+   unsigned height                 = 0;
    struct nbio_image_handle *image = (struct nbio_image_handle*)nbio->data;
 
    if (!image)
@@ -206,8 +222,6 @@ static void task_image_load_free_internal(nbio_handle_t *nbio)
 
    image->handle                 = NULL;
    image->cb                     = NULL;
-
-   free(image);
 }
 
 static int cb_nbio_generic(nbio_handle_t *nbio, size_t *len)
@@ -240,6 +254,12 @@ static int cb_nbio_generic(nbio_handle_t *nbio, size_t *len)
 
 error:
    task_image_load_free_internal(nbio);
+   if (nbio)
+   {
+      if (nbio->data)
+         free(nbio->data);
+      nbio->data = NULL;
+   }
    return -1;
 }
 
@@ -271,43 +291,48 @@ error:
 
 bool task_image_load_handler(retro_task_t *task)
 {
-   nbio_handle_t       *nbio  = (nbio_handle_t*)task->state;
+   nbio_handle_t            *nbio  = (nbio_handle_t*)task->state;
    struct nbio_image_handle *image = (struct nbio_image_handle*)nbio->data;
 
-   switch (image->status)
+   if (image)
    {
-      case IMAGE_STATUS_PROCESS_TRANSFER:
-         if (task_image_iterate_process_transfer(nbio) == -1)
-            image->status = IMAGE_STATUS_PROCESS_TRANSFER_PARSE;
-         break;
-      case IMAGE_STATUS_TRANSFER_PARSE:
-         task_image_iterate_transfer_parse(nbio);
-         if (image->is_blocking_on_processing)
-            image->status = IMAGE_STATUS_PROCESS_TRANSFER;
-         break;
-      case IMAGE_STATUS_TRANSFER:
-         if (!image->is_blocking)
-            if (task_image_iterate_transfer(nbio) == -1)
-               image->status = IMAGE_STATUS_TRANSFER_PARSE;
-         break;
-      case IMAGE_STATUS_PROCESS_TRANSFER_PARSE:
-         task_image_iterate_transfer_parse(nbio);
-         if (!image->is_finished)
+      switch (image->status)
+      {
+         case IMAGE_STATUS_PROCESS_TRANSFER:
+            if (task_image_iterate_process_transfer(nbio) == -1)
+               image->status = IMAGE_STATUS_PROCESS_TRANSFER_PARSE;
             break;
-      case IMAGE_STATUS_TRANSFER_PARSE_FREE:
-      case IMAGE_STATUS_POLL:
-      default:
-         break;
+         case IMAGE_STATUS_TRANSFER_PARSE:
+            task_image_iterate_transfer_parse(nbio);
+            if (image->is_blocking_on_processing)
+               image->status = IMAGE_STATUS_PROCESS_TRANSFER;
+            break;
+         case IMAGE_STATUS_TRANSFER:
+            if (!image->is_blocking)
+               if (task_image_iterate_transfer(nbio) == -1)
+                  image->status = IMAGE_STATUS_TRANSFER_PARSE;
+            break;
+         case IMAGE_STATUS_PROCESS_TRANSFER_PARSE:
+            task_image_iterate_transfer_parse(nbio);
+            if (!image->is_finished)
+               break;
+         case IMAGE_STATUS_TRANSFER_PARSE_FREE:
+         case IMAGE_STATUS_POLL:
+         default:
+            break;
+      }
    }
 
-   if (     nbio->is_finished 
-         && image->is_finished 
-         && !task->cancelled)
+   if (     (nbio  && nbio->is_finished )
+         && (image && image->is_finished )
+         && (task  && !task_get_cancelled(task)))
    {
-      task->task_data = malloc(sizeof(image->ti));
+      void *data = malloc(sizeof(image->ti));
 
-      if (task->task_data)
-         memcpy(task->task_data, &image->ti, sizeof(image->ti));
+      if (data)
+         memcpy(data, &image->ti, sizeof(image->ti));
+
+      task_set_data(task, data);
 
       return false;
    }
@@ -315,30 +340,24 @@ bool task_image_load_handler(retro_task_t *task)
    return true;
 }
 
-bool task_push_image_load(const char *fullpath,
-      enum msg_hash_enums enum_idx, retro_task_callback_t cb, void *user_data)
+bool task_push_image_load(const char *fullpath, retro_task_callback_t cb, void *user_data)
 {
    nbio_handle_t             *nbio   = NULL;
-   retro_task_t             *t       = NULL;
-   struct nbio_t             *handle = NULL;
    struct nbio_image_handle   *image = NULL;
+   retro_task_t                   *t = (retro_task_t*)calloc(1, sizeof(*t));
 
-   if (enum_idx == MSG_UNKNOWN)
-      goto error_msg;
-
-   t = (retro_task_t*)calloc(1, sizeof(*t));
    if (!t)
       goto error_msg;
 
    nbio = (nbio_handle_t*)calloc(1, sizeof(*nbio));
+
    if (!nbio)
       goto error;
 
-   handle = nbio_open(fullpath, NBIO_READ);
-   if (!handle)
-      goto error;
+   strlcpy(nbio->path, fullpath, sizeof(nbio->path));
 
-   nbio->handle       = handle;
+   if (video_driver_supports_rgba())
+      BIT32_SET(nbio->status_flags, NBIO_FLAG_IMAGE_SUPPORTS_RGBA);
 
    image              = (struct nbio_image_handle*)calloc(1, sizeof(*image));   
    if (!image)
@@ -349,19 +368,8 @@ bool task_push_image_load(const char *fullpath,
    nbio->data         = (struct nbio_image_handle*)image;
    nbio->is_finished  = false;
    nbio->cb           = &cb_nbio_image_menu_thumbnail;
-   nbio->status       = NBIO_STATUS_TRANSFER;
+   nbio->status       = NBIO_STATUS_INIT;
 
-   if (strstr(fullpath, file_path_str(FILE_PATH_PNG_EXTENSION)))
-      nbio->image_type = IMAGE_TYPE_PNG;
-   else if (strstr(fullpath, file_path_str(FILE_PATH_JPEG_EXTENSION)) 
-         || strstr(fullpath, file_path_str(FILE_PATH_JPG_EXTENSION)))
-      nbio->image_type = IMAGE_TYPE_JPEG;
-   else if (strstr(fullpath, file_path_str(FILE_PATH_BMP_EXTENSION)))
-      nbio->image_type = IMAGE_TYPE_BMP;
-   else if (strstr(fullpath, file_path_str(FILE_PATH_TGA_EXTENSION)))
-      nbio->image_type = IMAGE_TYPE_TGA;
-
-   nbio_begin_read(handle);
 
    t->state     = nbio;
    t->handler   = task_file_load_handler;
@@ -374,7 +382,6 @@ bool task_push_image_load(const char *fullpath,
    return true;
 
 error:
-   nbio_free(handle);
    task_image_load_free(t);
    free(t);
    if (nbio)
@@ -391,9 +398,13 @@ void task_image_load_free(retro_task_t *task)
 {
    nbio_handle_t       *nbio  = task ? (nbio_handle_t*)task->state : NULL;
 
-   if (nbio) {
+   if (nbio)
+   {
       task_image_load_free_internal(nbio);
+      if (nbio->data)
+         free(nbio->data);
       nbio_free(nbio->handle);
+      nbio->data        = NULL;
       nbio->handle      = NULL;
       free(nbio);
    }

@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  copyright (c) 2011-2015 - Daniel De Matteis
+ *  copyright (c) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -177,5 +177,14 @@ static INLINE unsigned gl_wrap_type_to_enum(enum gfx_wrap_type type)
 bool gl_query_core_context_in_use(void);
 void gl_ff_vertex(const struct video_coords *coords);
 void gl_ff_matrix(const math_matrix_4x4 *mat);
+void gl_load_texture_image(GLenum target,
+      GLint level,
+      GLint internalFormat,
+      GLsizei width,
+      GLsizei height,
+      GLint border,
+      GLenum format,
+      GLenum type,
+      const GLvoid * data);
 
 #endif

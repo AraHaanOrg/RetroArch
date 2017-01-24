@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -207,7 +207,6 @@ static BOOL CALLBACK enum_joypad_cb(const DIDEVICEINSTANCE *inst, void *p)
    bool is_xinput_pad;
 #endif
    LPDIRECTINPUTDEVICE8 *pad = NULL;
-   settings_t *settings = config_get_ptr();
 
    (void)p;
 
@@ -264,30 +263,14 @@ static BOOL CALLBACK enum_joypad_cb(const DIDEVICEINSTANCE *inst, void *p)
    if (!is_xinput_pad)
 #endif
    {
-      autoconfig_params_t params = {{0}};
-
-      strlcpy(settings->input.device_names[g_joypad_cnt],
-            dinput_joypad_name(g_joypad_cnt),
-            sizeof(settings->input.device_names[g_joypad_cnt]));
-
-      strlcpy(params.name,
-            dinput_joypad_name(g_joypad_cnt),
-            sizeof(params.name));
-      strlcpy(params.display_name,
-            dinput_joypad_friendly_name(g_joypad_cnt),
-            sizeof(params.driver));
-      strlcpy(params.driver,
-            dinput_joypad.ident,
-            sizeof(params.driver));
-
-      params.idx = g_joypad_cnt;
-      params.vid = dinput_joypad_vid(g_joypad_cnt);
-      params.pid = dinput_joypad_pid(g_joypad_cnt);
-
-      input_autoconfigure_connect(&params);
-
-      settings->input.pid[g_joypad_cnt] = params.pid;
-      settings->input.vid[g_joypad_cnt] = params.vid;
+      if (!input_autoconfigure_connect(
+               dinput_joypad_name(g_joypad_cnt),
+               dinput_joypad_friendly_name(g_joypad_cnt),
+               dinput_joypad.ident,
+               g_joypad_cnt,
+               dinput_joypad_vid(g_joypad_cnt),
+               dinput_joypad_pid(g_joypad_cnt)))
+         input_config_set_device_name(g_joypad_cnt, dinput_joypad_name(g_joypad_cnt));
    }
 
 #ifdef HAVE_XINPUT

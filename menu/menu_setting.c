@@ -1,8 +1,8 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2014-2016 - Jean-André Santoni
- *  Copyright (C) 2016 - Brad Parker
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2014-2017 - Jean-André Santoni
+ *  Copyright (C) 2016-2017 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -28,6 +28,8 @@
 #include <lists/string_list.h>
 
 #include <compat/strl.h>
+
+#include <audio/audio_resampler.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../config.h"
@@ -61,6 +63,7 @@
 #include "../dirs.h"
 #include "../paths.h"
 #include "../dynamic.h"
+#include "../list_special.h"
 #include "../runloop.h"
 #include "../verbosity.h"
 #include "../camera/camera_driver.h"
@@ -68,7 +71,6 @@
 #include "../location/location_driver.h"
 #include "../record/record_driver.h"
 #include "../audio/audio_driver.h"
-#include "../audio/audio_resampler_driver.h"
 #include "../input/input_config.h"
 #include "../tasks/tasks_internal.h"
 #include "../config.def.h"
@@ -109,7 +111,7 @@ static void setting_get_string_representation_cheevos_password(void *data,
    if (!setting)
       return;
 
-   if (*setting->value.target.string)
+   if (!string_is_empty(setting->value.target.string))
       snprintf(s, len, "%s",
             "********");
    else
@@ -1020,7 +1022,6 @@ static int setting_action_start_libretro_device_type(void *data)
    unsigned devices[128], types = 0, port = 0;
    const struct retro_controller_info *desc = NULL;
    rarch_system_info_t *system = NULL;
-   settings_t        *settings = config_get_ptr();
    rarch_setting_t   *setting  = (rarch_setting_t*)data;
 
    if (setting_generic_action_start_default(setting) != 0)
@@ -1060,7 +1061,7 @@ static int setting_action_start_libretro_device_type(void *data)
 
    current_device = RETRO_DEVICE_JOYPAD;
 
-   settings->input.libretro_device[port] = current_device;
+   input_config_set_device(port, current_device);
 
    pad.port   = port;
    pad.device = current_device;
@@ -1174,7 +1175,7 @@ static int setting_action_left_libretro_device_type(
    current_device = devices
       [(current_idx + types - 1) % types];
 
-   settings->input.libretro_device[port] = current_device;
+   input_config_set_device(port, current_device);
 
    pad.port   = port;
    pad.device = current_device;
@@ -1241,7 +1242,7 @@ static int setting_action_right_libretro_device_type(
    current_device = devices
       [(current_idx + 1) % types];
 
-   settings->input.libretro_device[port] = current_device;
+   input_config_set_device(port, current_device);
 
    pad.port   = port;
    pad.device = current_device;
@@ -1312,6 +1313,7 @@ static int setting_action_ok_bind_all_save_autoconfig(void *data, bool wraparoun
    unsigned index_offset;
    settings_t    *settings   = config_get_ptr();
    rarch_setting_t *setting  = (rarch_setting_t*)data;
+   const char *name          = NULL;
 
    (void)wraparound;
 
@@ -1319,9 +1321,9 @@ static int setting_action_ok_bind_all_save_autoconfig(void *data, bool wraparoun
       return -1;
 
    index_offset = setting->index_offset;
+   name         = settings->input.device_names[index_offset];
 
-   if(config_save_autoconf_profile(
-            settings->input.device_names[index_offset], index_offset))
+   if(!string_is_empty(name) && config_save_autoconf_profile(name, index_offset))
       runloop_msg_queue_push(
             msg_hash_to_str(MSG_AUTOCONFIG_FILE_SAVED_SUCCESSFULLY), 1, 100, true);
    else
@@ -1535,8 +1537,6 @@ void general_write_handler(void *data)
    enum event_command rarch_cmd = CMD_EVENT_NONE;
    rarch_setting_t *setting     = (rarch_setting_t*)data;
    settings_t *settings         = config_get_ptr();
-   global_t *global             = global_get_ptr();
-   file_list_t *menu_stack      = menu_entries_get_menu_stack_ptr(0);
 
    if (!setting)
       return;
@@ -1560,9 +1560,9 @@ void general_write_handler(void *data)
       case MENU_ENUM_LABEL_VIDEO_THREADED:
          {
             if (*setting->value.target.boolean)
-               task_queue_ctl(TASK_QUEUE_CTL_SET_THREADED, NULL);
+               task_queue_set_threaded();
             else
-               task_queue_ctl(TASK_QUEUE_CTL_UNSET_THREADED, NULL);
+               task_queue_unset_threaded();
          }
          break;
       case MENU_ENUM_LABEL_INPUT_POLL_TYPE_BEHAVIOR:
@@ -1593,6 +1593,8 @@ void general_write_handler(void *data)
          if (*setting->value.target.boolean)
          {
             menu_displaylist_info_t info = {0};
+            file_list_t *menu_stack      = menu_entries_get_menu_stack_ptr(0);
+
             info.list          = menu_stack;
             info.type          = 0; 
             info.directory_ptr = 0;
@@ -1684,10 +1686,13 @@ void general_write_handler(void *data)
          rarch_cmd = CMD_EVENT_AUDIO_REINIT;
          break;
       case MENU_ENUM_LABEL_PAL60_ENABLE:
-         if (*setting->value.target.boolean && global->console.screen.pal_enable)
-            rarch_cmd = CMD_EVENT_REINIT;
-         else
-            setting_set_with_string_representation(setting, "false");
+         {
+            global_t *global             = global_get_ptr();
+            if (*setting->value.target.boolean && global->console.screen.pal_enable)
+               rarch_cmd = CMD_EVENT_REINIT;
+            else
+               setting_set_with_string_representation(setting, "false");
+         }
          break;
       case MENU_ENUM_LABEL_SYSTEM_BGM_ENABLE:
          if (*setting->value.target.boolean)
@@ -1719,34 +1724,16 @@ void general_write_handler(void *data)
          retroarch_override_setting_set(RARCH_OVERRIDE_SETTING_NETPLAY_MODE, NULL);
 #endif
          break;
-      case MENU_ENUM_LABEL_NETPLAY_SPECTATOR_MODE_ENABLE:
+      case MENU_ENUM_LABEL_NETPLAY_STATELESS_MODE:
 #ifdef HAVE_NETWORKING
-         retroarch_override_setting_set(RARCH_OVERRIDE_SETTING_NETPLAY_MODE, NULL);
-#endif
-         break;
-      case MENU_ENUM_LABEL_NETPLAY_DELAY_FRAMES:
-#ifdef HAVE_NETWORKING
-         {
-            bool val = (settings->netplay.delay_frames > 0);
-            
-            if (val)
-               retroarch_override_setting_set(RARCH_OVERRIDE_SETTING_NETPLAY_DELAY_FRAMES, NULL);
-            else
-               retroarch_override_setting_unset(RARCH_OVERRIDE_SETTING_NETPLAY_DELAY_FRAMES, NULL);
-         }
+         retroarch_override_setting_set(RARCH_OVERRIDE_SETTING_NETPLAY_STATELESS_MODE, NULL);
 #endif
          break;
       case MENU_ENUM_LABEL_NETPLAY_CHECK_FRAMES:
 #ifdef HAVE_NETWORKING
-         {
-            bool val = (settings->netplay.check_frames > 0);
-
-            if (val)
-               retroarch_override_setting_set(RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES, NULL);
-            else
-               retroarch_override_setting_unset(RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES, NULL);
-         }
+         retroarch_override_setting_set(RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES, NULL);
 #endif
+         break;
       default:
          break;
    }
@@ -1881,13 +1868,13 @@ static bool setting_append_list_input_player_options(
    static char buffer[MAX_USERS][13+2+1];
    static char group_lbl[MAX_USERS][255];
    unsigned i;
-   rarch_setting_group_info_t group_info    = {0};
-   rarch_setting_group_info_t subgroup_info = {0};
-   settings_t *settings = config_get_ptr();
+   rarch_setting_group_info_t group_info      = {0};
+   rarch_setting_group_info_t subgroup_info   = {0};
+   settings_t *settings                       = config_get_ptr();
+   rarch_system_info_t *system                = NULL;
    const char *temp_value                     = NULL;
    const struct retro_keybind* const defaults =
       (user == 0) ? retro_keybinds_1 : retro_keybinds_rest;
-   rarch_system_info_t *system = NULL;
 
    runloop_ctl(RUNLOOP_CTL_SYSTEM_INFO_GET, &system);
 
@@ -1911,7 +1898,7 @@ static bool setting_append_list_input_player_options(
          parent_group);
 
    {
-      char tmp_string[PATH_MAX_LENGTH] = {0};
+      char tmp_string[PATH_MAX_LENGTH];
       /* These constants match the string lengths.
        * Keep them up to date or you'll get some really obvious bugs.
        * 2 is the length of '99'; we don't need more users than that.
@@ -1930,6 +1917,8 @@ static bool setting_append_list_input_player_options(
       static char label_bind_all[MAX_USERS][64];
       static char label_bind_all_save_autoconfig[MAX_USERS][64];
       static char label_bind_defaults[MAX_USERS][64];
+
+      tmp_string[0] = '\0';
 
       snprintf(tmp_string, sizeof(tmp_string), "input_player%u", user + 1);
 
@@ -2122,6 +2111,18 @@ static bool setting_append_list_input_player_options(
    return true;
 }
 
+/**
+ * config_get_audio_resampler_driver_options:
+ *
+ * Get an enumerated list of all resampler driver names, separated by '|'.
+ *
+ * Returns: string listing of all resampler driver names, separated by '|'.
+ **/
+static const char* config_get_audio_resampler_driver_options(void)
+{
+   return char_list_new_special(STRING_LIST_AUDIO_RESAMPLER_DRIVERS, NULL);
+}
+
 static bool setting_append_list(
       enum settings_list_type type,
       rarch_setting_t **list,
@@ -2131,8 +2132,8 @@ static bool setting_append_list(
    unsigned user;
    rarch_setting_group_info_t group_info    = {0};
    rarch_setting_group_info_t subgroup_info = {0};
-   settings_t *settings  = config_get_ptr();
-   global_t   *global   = global_get_ptr();
+   settings_t *settings                     = config_get_ptr();
+   global_t   *global                       = global_get_ptr();
 
    (void)settings;
    (void)global;
@@ -2368,21 +2369,21 @@ static bool setting_append_list(
 #if defined(HAVE_LAKKA)
          CONFIG_ACTION(
                list, list_info,
-               MENU_ENUM_LABEL_SHUTDOWN,
-               MENU_ENUM_LABEL_VALUE_SHUTDOWN,
-               &group_info,
-               &subgroup_info,
-               parent_group);
-         menu_settings_list_current_add_cmd(list, list_info, CMD_EVENT_SHUTDOWN);
-
-         CONFIG_ACTION(
-               list, list_info,
                MENU_ENUM_LABEL_REBOOT,
                MENU_ENUM_LABEL_VALUE_REBOOT,
                &group_info,
                &subgroup_info,
                parent_group);
          menu_settings_list_current_add_cmd(list, list_info, CMD_EVENT_REBOOT);
+
+         CONFIG_ACTION(
+               list, list_info,
+               MENU_ENUM_LABEL_SHUTDOWN,
+               MENU_ENUM_LABEL_VALUE_SHUTDOWN,
+               &group_info,
+               &subgroup_info,
+               parent_group);
+         menu_settings_list_current_add_cmd(list, list_info, CMD_EVENT_SHUTDOWN);
 #endif
 
          CONFIG_ACTION(
@@ -2507,7 +2508,6 @@ static bool setting_append_list(
                &subgroup_info,
                parent_group);
 
-#if !defined(RARCH_CONSOLE)
          CONFIG_ACTION(
                list, list_info,
                MENU_ENUM_LABEL_USER_INTERFACE_SETTINGS,
@@ -2515,7 +2515,6 @@ static bool setting_append_list(
                &group_info,
                &subgroup_info,
                parent_group);
-#endif
 
          CONFIG_ACTION(
                list, list_info,
@@ -2540,6 +2539,7 @@ static bool setting_append_list(
                &group_info,
                &subgroup_info,
                parent_group);
+         settings_data_list_current_add_flags(list, list_info, SD_FLAG_ADVANCED);
 
          if (!string_is_equal(settings->wifi.driver, "null"))
          {
@@ -2936,13 +2936,13 @@ static bool setting_append_list(
             bool_entries[0].name_enum_idx  = MENU_ENUM_LABEL_SORT_SAVEFILES_ENABLE;
             bool_entries[0].SHORT_enum_idx = MENU_ENUM_LABEL_VALUE_SORT_SAVEFILES_ENABLE;
             bool_entries[0].default_value  = default_sort_savefiles_enable;
-            bool_entries[0].flags          = SD_FLAG_NONE;
+            bool_entries[0].flags          = SD_FLAG_ADVANCED;
 
             bool_entries[1].target         = &settings->sort_savestates_enable;
             bool_entries[1].name_enum_idx  = MENU_ENUM_LABEL_SORT_SAVESTATES_ENABLE;
             bool_entries[1].SHORT_enum_idx = MENU_ENUM_LABEL_VALUE_SORT_SAVESTATES_ENABLE;
             bool_entries[1].default_value  = default_sort_savestates_enable;
-            bool_entries[1].flags          = SD_FLAG_NONE;
+            bool_entries[1].flags          = SD_FLAG_ADVANCED;
 
             bool_entries[2].target         = &settings->block_sram_overwrite;
             bool_entries[2].name_enum_idx  = MENU_ENUM_LABEL_BLOCK_SRAM_OVERWRITE;
@@ -3064,7 +3064,6 @@ static bool setting_append_list(
                   general_write_handler,
                   general_read_handler);
          menu_settings_list_current_add_range(list, list_info, 1, 32768, 1, true, false);
-         settings_data_list_current_add_flags(list, list_info, SD_FLAG_ADVANCED);
 
          END_SUB_GROUP(list, list_info, parent_group);
          END_GROUP(list, list_info, parent_group);
@@ -4078,7 +4077,7 @@ static bool setting_append_list(
                   parent_group,
                   general_write_handler,
                   general_read_handler,
-                  SD_FLAG_NONE
+                  SD_FLAG_ADVANCED
                   );
 
             CONFIG_BOOL(
@@ -4094,7 +4093,7 @@ static bool setting_append_list(
                   parent_group,
                   general_write_handler,
                   general_read_handler,
-                  SD_FLAG_NONE
+                  SD_FLAG_ADVANCED
                   );
 
 #if 0
@@ -4729,7 +4728,7 @@ static bool setting_append_list(
                parent_group,
                general_write_handler,
                general_read_handler,
-               SD_FLAG_NONE
+               SD_FLAG_ADVANCED
                );
 
          CONFIG_BOOL(
@@ -4745,7 +4744,7 @@ static bool setting_append_list(
                parent_group,
                general_write_handler,
                general_read_handler,
-               SD_FLAG_NONE
+               SD_FLAG_ADVANCED
                );
 
          CONFIG_BOOL(
@@ -5085,6 +5084,23 @@ static bool setting_append_list(
                   general_write_handler,
                   general_read_handler,
                   SD_FLAG_NONE);
+				  
+#ifdef HAVE_LIBRETRODB
+            CONFIG_BOOL(
+                  list, list_info,
+                  &settings->menu.xmb.show_add,
+                  MENU_ENUM_LABEL_XMB_SHOW_ADD,
+                  MENU_ENUM_LABEL_VALUE_XMB_SHOW_ADD,
+                  xmb_show_add,
+                  MENU_ENUM_LABEL_VALUE_OFF,
+                  MENU_ENUM_LABEL_VALUE_ON,
+                  &group_info,
+                  &subgroup_info,
+                  parent_group,
+                  general_write_handler,
+                  general_read_handler,
+                  SD_FLAG_NONE);
+#endif				  
          }
 
 #endif
@@ -5172,6 +5188,21 @@ static bool setting_append_list(
                &settings->menu.timedate_enable,
                MENU_ENUM_LABEL_TIMEDATE_ENABLE,
                MENU_ENUM_LABEL_VALUE_TIMEDATE_ENABLE,
+               true,
+               MENU_ENUM_LABEL_VALUE_OFF,
+               MENU_ENUM_LABEL_VALUE_ON,
+               &group_info,
+               &subgroup_info,
+               parent_group,
+               general_write_handler,
+               general_read_handler,
+               SD_FLAG_ADVANCED);
+
+         CONFIG_BOOL(
+               list, list_info,
+               &settings->menu.battery_level_enable,
+               MENU_ENUM_LABEL_BATTERY_LEVEL_ENABLE,
+               MENU_ENUM_LABEL_VALUE_BATTERY_LEVEL_ENABLE,
                true,
                MENU_ENUM_LABEL_VALUE_OFF,
                MENU_ENUM_LABEL_VALUE_ON,
@@ -5409,6 +5440,26 @@ static bool setting_append_list(
          menu_settings_list_current_add_range(list, list_info, 0, 0, 1.0, true, false);
 
          END_SUB_GROUP(list, list_info, parent_group);
+		 
+		 START_SUB_GROUP(list, list_info, "Playlist", &group_info, &subgroup_info, parent_group);
+
+		 CONFIG_BOOL(
+               list, list_info,
+               &settings->playlist_entry_remove,
+               MENU_ENUM_LABEL_PLAYLIST_ENTRY_REMOVE,
+               MENU_ENUM_LABEL_VALUE_PLAYLIST_ENTRY_REMOVE,
+               def_playlist_entry_remove,
+               MENU_ENUM_LABEL_VALUE_OFF,
+               MENU_ENUM_LABEL_VALUE_ON,
+               &group_info,
+               &subgroup_info,
+               parent_group,
+               general_write_handler,
+               general_read_handler,
+               SD_FLAG_NONE);
+		 
+         END_SUB_GROUP(list, list_info, parent_group);
+		 
          END_GROUP(list, list_info, parent_group);
          break;
       case SETTINGS_LIST_CHEEVOS:
@@ -5568,21 +5619,50 @@ static bool setting_append_list(
             menu_settings_list_current_add_range(list, list_info, 0, 65535, 1, true, true);
             settings_data_list_current_add_flags(list, list_info, SD_FLAG_ALLOW_INPUT);
 
-            CONFIG_UINT(
+            CONFIG_STRING(
                   list, list_info,
-                  &settings->netplay.delay_frames,
-                  MENU_ENUM_LABEL_NETPLAY_DELAY_FRAMES,
-                  MENU_ENUM_LABEL_VALUE_NETPLAY_DELAY_FRAMES,
-                  netplay_delay_frames,
+                  settings->netplay.password,
+                  sizeof(settings->netplay.password),
+                  MENU_ENUM_LABEL_NETPLAY_PASSWORD,
+                  MENU_ENUM_LABEL_VALUE_NETPLAY_PASSWORD,
+                  "",
                   &group_info,
                   &subgroup_info,
                   parent_group,
                   general_write_handler,
                   general_read_handler);
-            menu_settings_list_current_add_range(list, list_info, 0, 10, 1, true, false);
-            settings_data_list_current_add_flags(list, list_info, SD_FLAG_ADVANCED);
+            settings_data_list_current_add_flags(list, list_info, SD_FLAG_ALLOW_INPUT);
 
-            CONFIG_UINT(
+            CONFIG_STRING(
+                  list, list_info,
+                  settings->netplay.spectate_password,
+                  sizeof(settings->netplay.spectate_password),
+                  MENU_ENUM_LABEL_NETPLAY_SPECTATE_PASSWORD,
+                  MENU_ENUM_LABEL_VALUE_NETPLAY_SPECTATE_PASSWORD,
+                  "",
+                  &group_info,
+                  &subgroup_info,
+                  parent_group,
+                  general_write_handler,
+                  general_read_handler);
+            settings_data_list_current_add_flags(list, list_info, SD_FLAG_ALLOW_INPUT);
+
+            CONFIG_BOOL(
+                  list, list_info,
+                  &settings->netplay.stateless_mode,
+                  MENU_ENUM_LABEL_NETPLAY_STATELESS_MODE,
+                  MENU_ENUM_LABEL_VALUE_NETPLAY_STATELESS_MODE,
+                  false,
+                  MENU_ENUM_LABEL_VALUE_OFF,
+                  MENU_ENUM_LABEL_VALUE_ON,
+                  &group_info,
+                  &subgroup_info,
+                  parent_group,
+                  general_write_handler,
+                  general_read_handler,
+                  SD_FLAG_NONE);
+
+            CONFIG_INT(
                   list, list_info,
                   &settings->netplay.check_frames,
                   MENU_ENUM_LABEL_NETPLAY_CHECK_FRAMES,
@@ -5593,23 +5673,8 @@ static bool setting_append_list(
                   parent_group,
                   general_write_handler,
                   general_read_handler);
-            menu_settings_list_current_add_range(list, list_info, 0, 10, 1, true, false);
+            menu_settings_list_current_add_range(list, list_info, -600, 600, 1, true, false);
             settings_data_list_current_add_flags(list, list_info, SD_FLAG_ADVANCED);
-
-            CONFIG_BOOL(
-                  list, list_info,
-                  &settings->netplay.is_spectate,
-                  MENU_ENUM_LABEL_NETPLAY_SPECTATOR_MODE_ENABLE,
-                  MENU_ENUM_LABEL_VALUE_NETPLAY_SPECTATOR_MODE_ENABLE,
-                  false,
-                  MENU_ENUM_LABEL_VALUE_OFF,
-                  MENU_ENUM_LABEL_VALUE_ON,
-                  &group_info,
-                  &subgroup_info,
-                  parent_group,
-                  general_write_handler,
-                  general_read_handler,
-                  SD_FLAG_NONE);
 
             CONFIG_BOOL(
                   list, list_info,
@@ -5717,7 +5782,7 @@ static bool setting_append_list(
                char s1[64], s2[64];
 
                snprintf(s1, sizeof(s1), "%s_user_p%d", msg_hash_to_str(MENU_ENUM_LABEL_NETWORK_REMOTE_ENABLE), user + 1);
-               snprintf(s2, sizeof(s2), "User %d Remote Enable", user + 1);
+               snprintf(s2, sizeof(s2), msg_hash_to_str(MENU_ENUM_LABEL_VALUE_NETWORK_USER_REMOTE_ENABLE), user + 1);
 
 
                CONFIG_BOOL_ALT(
@@ -5848,6 +5913,20 @@ static bool setting_append_list(
                sizeof(settings->username),
                MENU_ENUM_LABEL_NETPLAY_NICKNAME,
                MENU_ENUM_LABEL_VALUE_NETPLAY_NICKNAME,
+               "",
+               &group_info,
+               &subgroup_info,
+               parent_group,
+               general_write_handler,
+               general_read_handler);
+         settings_data_list_current_add_flags(list, list_info, SD_FLAG_ALLOW_INPUT);
+
+         CONFIG_STRING(
+               list, list_info,
+               settings->browse_url,
+               sizeof(settings->browse_url),
+               MENU_ENUM_LABEL_BROWSE_URL,
+               MENU_ENUM_LABEL_VALUE_BROWSE_URL,
                "",
                &group_info,
                &subgroup_info,

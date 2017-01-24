@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Higor Euripedes
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Higor Euripedes
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -20,6 +20,7 @@
 
 #include <boolean.h>
 #include <retro_common_api.h>
+#include <retro_miscellaneous.h>
 
 #include <queues/message_queue.h>
 #include <queues/task_queue.h>
@@ -28,6 +29,7 @@
 #include "../content.h"
 #include "../core_type.h"
 #include "../msg_hash.h"
+#include "../frontend/frontend_driver.h"
 
 RETRO_BEGIN_DECLS
 
@@ -53,10 +55,17 @@ enum content_mode_load
 
 enum nbio_status_enum
 {
-   NBIO_STATUS_POLL = 0,
+   NBIO_STATUS_INIT = 0,
+   NBIO_STATUS_POLL,
    NBIO_STATUS_TRANSFER,
    NBIO_STATUS_TRANSFER_PARSE,
    NBIO_STATUS_TRANSFER_PARSE_FREE
+};
+
+enum nbio_status_flags
+{
+   NBIO_FLAG_NONE = 0,
+   NBIO_FLAG_IMAGE_SUPPORTS_RGBA
 };
 
 typedef struct nbio_handle
@@ -69,17 +78,9 @@ typedef struct nbio_handle
    unsigned pos_increment;
    msg_queue_t *msg_queue;
    unsigned status;
+   uint32_t status_flags;
+   char path[4096];
 } nbio_handle_t;
-
-typedef struct autoconfig_params
-{
-   char  name[255];
-   char  driver[255];
-   char  display_name[255];
-   unsigned idx;
-   int32_t vid;
-   int32_t pid;
-} autoconfig_params_t;
 
 #ifdef HAVE_NETWORKING
 typedef struct
@@ -97,14 +98,19 @@ bool task_push_wifi_scan(void);
 
 bool task_push_netplay_lan_scan(void);
 
+bool task_push_netplay_crc_scan(uint32_t crc, char* name,
+      const char *hostname, const char *corename);
+
 #endif
 
 bool task_push_image_load(const char *fullpath,
-      enum msg_hash_enums enum_idx,
       retro_task_callback_t cb, void *userdata);
 
 #ifdef HAVE_LIBRETRODB
-bool task_push_dbscan(const char *fullpath,
+bool task_push_dbscan(
+      const char *playlist_directory,
+      const char *content_database,
+      const char *fullpath,
       bool directory, retro_task_callback_t cb);
 #endif
 
@@ -149,12 +155,6 @@ void task_image_load_free(retro_task_t *task);
 
 void task_file_load_handler(retro_task_t *task);
 
-bool content_push_to_history_playlist(
-      void *data,
-      const char *path,
-      const char *core_name,
-      const char *core_path);
-
 bool take_screenshot(const char *path, bool silence);
 
 bool event_load_save_files(void);
@@ -167,9 +167,19 @@ void *savefile_ptr_get(void);
 
 void path_init_savefile_new(void);
 
-bool input_autoconfigure_connect(autoconfig_params_t *params);
+bool input_autoconfigure_connect(
+      const char *name,
+      const char *display_name,
+      const char *driver,
+      unsigned idx,
+      unsigned vid,
+      unsigned pid);
 
 bool input_autoconfigure_disconnect(unsigned i, const char *ident);
+
+void task_push_get_powerstate(void);
+
+enum frontend_powerstate get_last_powerstate(int *percent);
 
 extern const char* const input_builtin_autoconfs[];
 

@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2016 - Brad Parker
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2016-2017 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -91,6 +91,8 @@ typedef struct
    bool autosave;
    bool undo_save;
    bool mute;
+   int state_slot;
+   bool thumbnail_enable;
 } save_task_state_t;
 
 typedef save_task_state_t load_task_data_t;
@@ -244,9 +246,6 @@ error:
  **/
 static void autosave_free(autosave_t *handle)
 {
-   if (!handle)
-      return;
-
    slock_lock(handle->cond_lock);
    handle->quit = true;
    slock_unlock(handle->cond_lock);
@@ -257,8 +256,9 @@ static void autosave_free(autosave_t *handle)
    slock_free(handle->cond_lock);
    scond_free(handle->cond);
 
-   free(handle->buffer);
-   free(handle);
+   if (handle->buffer)
+      free(handle->buffer);
+   handle->buffer = NULL;
 }
 
 
@@ -307,10 +307,17 @@ void autosave_deinit(void)
    unsigned i;
 
    for (i = 0; i < autosave_state.num; i++)
-      autosave_free(autosave_state.list[i]);
+   {
+      autosave_t *handle = autosave_state.list[i];
+      if (handle)
+      {
+         autosave_free(handle);
+         free(autosave_state.list[i]);
+      }
+      autosave_state.list[i] = NULL;
+   }
 
-   if (autosave_state.list)
-      free(autosave_state.list);
+   free(autosave_state.list);
 
    autosave_state.list     = NULL;
    autosave_state.num      = 0;
@@ -329,8 +336,9 @@ void autosave_lock(void)
 
    for (i = 0; i < autosave_state.num; i++)
    {
-      if (autosave_state.list[i])
-         slock_lock(autosave_state.list[i]->lock);
+      autosave_t *handle = autosave_state.list[i];
+      if (handle)
+         slock_lock(handle->lock);
    }
 #endif
 }
@@ -347,8 +355,9 @@ void autosave_unlock(void)
 
    for (i = 0; i < autosave_state.num; i++)
    {
-      if (autosave_state.list[i])
-         slock_unlock(autosave_state.list[i]->lock);
+      autosave_t *handle = autosave_state.list[i];
+      if (handle)
+         slock_unlock(handle->lock);
    }
 #endif
 }
@@ -506,17 +515,17 @@ static void task_save_handler_finished(retro_task_t *task,
 {
    save_task_state_t *task_data = NULL;
 
-   task->finished = true;
+   task_set_finished(task, true);
 
    filestream_close(state->file);
 
-   if (!task->error && task->cancelled)
-      task->error = strdup("Task canceled");
+   if (!task_get_error(task) && task_get_cancelled(task))
+      task_set_error(task, strdup("Task canceled"));
 
    task_data = (save_task_state_t*)calloc(1, sizeof(*task_data));
    memcpy(task_data, state, sizeof(*state));
 
-   task->task_data = task_data;
+   task_set_data(task, task_data);
 
    if (state->data)
    {
@@ -555,9 +564,9 @@ static void task_save_handler(retro_task_t *task)
 
    state->written += written;
 
-   task->progress  = (state->written / (float)state->size) * 100;
+   task_set_progress(task, (state->written / (float)state->size) * 100);
 
-   if (task->cancelled || written != remaining)
+   if (task_get_cancelled(task) || written != remaining)
    {
       char err[PATH_MAX_LENGTH];
 
@@ -576,39 +585,33 @@ static void task_save_handler(retro_task_t *task)
       else
          snprintf(err, sizeof(err), "%s %s", msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO), state->path);
 
-      task->error = strdup(err);
+      task_set_error(task, strdup(err));
       task_save_handler_finished(task, state);
       return;
    }
 
    if (state->written == state->size)
    {
-      char msg[1024];
-      settings_t *settings = config_get_ptr();
+      char       *msg      = NULL;
 
-      msg[0] = '\0';
-
-      if (task->title)
-         free(task->title);
-
-      task->title = NULL;
+      task_free_title(task);
 
       if (state->undo_save)
-      {
-         strlcpy(msg, msg_hash_to_str(MSG_RESTORED_OLD_SAVE_STATE),
-               sizeof(msg));
-      }
+         msg = strdup(msg_hash_to_str(MSG_RESTORED_OLD_SAVE_STATE));
+      else if (state->state_slot < 0)
+         msg = strdup(msg_hash_to_str(MSG_SAVED_STATE_TO_SLOT_AUTO));
       else
       {
-         if (settings->state_slot < 0)
-            strlcpy(msg, msg_hash_to_str(MSG_SAVED_STATE_TO_SLOT_AUTO), sizeof(msg));
-         else
-            snprintf(msg, sizeof(msg), msg_hash_to_str(MSG_SAVED_STATE_TO_SLOT),
-                  settings->state_slot);
+         char new_msg[128];
+         new_msg[0] = '\0';
+
+         snprintf(new_msg, sizeof(new_msg), msg_hash_to_str(MSG_SAVED_STATE_TO_SLOT),
+               state->state_slot);
+         msg = strdup(new_msg);
       }
 
-      if (!task->mute)
-         task->title = strdup(msg);
+      if (!task_get_mute(task) && msg)
+         task_set_title(task, msg);
 
       task_save_handler_finished(task, state);
 
@@ -628,20 +631,22 @@ static bool task_push_undo_save_state(const char *path, void *data, size_t size)
 {
    retro_task_t       *task = (retro_task_t*)calloc(1, sizeof(*task));
    save_task_state_t *state = (save_task_state_t*)calloc(1, sizeof(*state));
+   settings_t     *settings = config_get_ptr();
 
    if (!task || !state)
       goto error;
 
    strlcpy(state->path, path, sizeof(state->path));
-   state->data = data;
-   state->size = size;
-   state->undo_save = true;
+   state->data       = data;
+   state->size       = size;
+   state->undo_save  = true;
+   state->state_slot = settings->state_slot;
 
-   task->type = TASK_TYPE_BLOCKING;
-   task->state = state;
-   task->handler = task_save_handler;
-   task->callback = undo_save_state_cb;
-   task->title = strdup(msg_hash_to_str(MSG_UNDOING_SAVE_STATE));
+   task->type        = TASK_TYPE_BLOCKING;
+   task->state       = state;
+   task->handler     = task_save_handler;
+   task->callback    = undo_save_state_cb;
+   task->title       = strdup(msg_hash_to_str(MSG_UNDOING_SAVE_STATE));
 
    task_queue_ctl(TASK_QUEUE_CTL_PUSH, task);
 
@@ -683,18 +688,18 @@ static void task_load_handler_finished(retro_task_t *task,
 {
    load_task_data_t *task_data = NULL;
 
-   task->finished              = true;
+   task_set_finished(task, true);
 
    if (state->file)
       filestream_close(state->file);
 
-   if (!task->error && task->cancelled)
-      task->error = strdup("Task canceled");
+   if (!task_get_error(task) && task_get_cancelled(task))
+      task_set_error(task, strdup("Task canceled"));
 
    task_data = (load_task_data_t*)calloc(1, sizeof(*task_data));
    memcpy(task_data, state, sizeof(*task_data));
 
-   task->task_data = task_data;
+   task_set_data(task, task_data);
 
    free(state);
 }
@@ -739,9 +744,9 @@ static void task_load_handler(retro_task_t *task)
    state->bytes_read += bytes_read;
 
    if (state->size > 0)
-      task->progress  = (state->bytes_read / (float)state->size) * 100;
+      task_set_progress(task, (state->bytes_read / (float)state->size) * 100);
 
-   if (task->cancelled || bytes_read != remaining)
+   if (task_get_cancelled(task) || bytes_read != remaining)
    {
       if (state->autoload)
       {
@@ -753,12 +758,10 @@ static void task_load_handler(retro_task_t *task)
                msg_hash_to_str(MSG_AUTOLOADING_SAVESTATE_FROM),
                state->path,
                msg_hash_to_str(MSG_FAILED));
-         task->error = strdup(msg);
+         task_set_error(task, strdup(msg));
       }
       else
-      {
-         task->error = strdup(msg_hash_to_str(MSG_FAILED_TO_LOAD_STATE));
-      }
+         task_set_error(task, strdup(msg_hash_to_str(MSG_FAILED_TO_LOAD_STATE)));
 
       free(state->data);
       state->data = NULL;
@@ -769,14 +772,10 @@ static void task_load_handler(retro_task_t *task)
    if (state->bytes_read == state->size)
    {
       char msg[1024];
-      settings_t *settings = config_get_ptr();
 
       msg[0] = '\0';
 
-      if (task->title)
-         free(task->title);
-
-      task->title = NULL;
+      task_free_title(task);
 
       if (state->autoload)
       {
@@ -784,20 +783,19 @@ static void task_load_handler(retro_task_t *task)
                msg_hash_to_str(MSG_AUTOLOADING_SAVESTATE_FROM),
                state->path,
                msg_hash_to_str(MSG_SUCCEEDED));
-         if (!task->mute)
-            task->title = strdup(msg);
       }
       else
       {
-         if (settings->state_slot < 0)
+         if (state->state_slot < 0)
             strlcpy(msg, msg_hash_to_str(MSG_LOADED_STATE_FROM_SLOT_AUTO), sizeof(msg));
          else
             snprintf(msg, sizeof(msg), msg_hash_to_str(MSG_LOADED_STATE_FROM_SLOT),
-                  settings->state_slot);
+                  state->state_slot);
 
-         if (!task->mute)
-            task->title = strdup(msg);
       }
+
+      if (!task_get_mute(task))
+         task_set_title(task, strdup(msg));
 
       task_load_handler_finished(task, state);
 
@@ -822,15 +820,12 @@ static void content_load_state_cb(void *task_data,
    retro_ctx_serialize_info_t serial_info;
    unsigned i;
    bool ret;
-   char err_buf[1024];
    load_task_data_t *load_data = (load_task_data_t*)task_data;
    ssize_t size                = load_data->size;
    unsigned num_blocks         = 0;
    void *buf                   = load_data->data;
    struct sram_block *blocks   = NULL;
    settings_t *settings        = config_get_ptr();
-
-   err_buf[0] = '\0';
 
    RARCH_LOG("%s: \"%s\".\n",
          msg_hash_to_str(MSG_LOADING_STATE),
@@ -955,20 +950,6 @@ static void content_load_state_cb(void *task_data,
    return;
 
 error:
-   if (load_data->autoload)
-      snprintf(err_buf, sizeof(err_buf), "%s \"%s\" %s.",
-            msg_hash_to_str(MSG_AUTOLOADING_SAVESTATE_FROM),
-            load_data->path,
-            msg_hash_to_str(MSG_FAILED)
-            );
-   else
-      snprintf(err_buf, sizeof(err_buf), "%s \"%s\".\n",
-                          msg_hash_to_str(MSG_FAILED_TO_LOAD_STATE),
-                          load_data->path);
-
-   if (!load_data->mute)
-      runloop_msg_queue_push(err_buf, 1, 180, true);
-
    RARCH_ERR("%s \"%s\".\n",
          msg_hash_to_str(MSG_FAILED_TO_LOAD_STATE),
          load_data->path);
@@ -985,11 +966,10 @@ error:
 static void save_state_cb(void *task_data,
                            void *user_data, const char *error)
 {
-   settings_t *settings = config_get_ptr();
    save_task_state_t *state = (save_task_state_t*)task_data;
    char               *path = strdup(state->path);
 
-   if (settings->savestate_thumbnail_enable)
+   if (state->thumbnail_enable)
       take_screenshot(path, true);
 
    free(path);
@@ -1007,22 +987,24 @@ static void task_push_save_state(const char *path, void *data, size_t size, bool
 {
    retro_task_t       *task = (retro_task_t*)calloc(1, sizeof(*task));
    save_task_state_t *state = (save_task_state_t*)calloc(1, sizeof(*state));
+   settings_t     *settings = config_get_ptr();
 
    if (!task || !state)
       goto error;
 
    strlcpy(state->path, path, sizeof(state->path));
-   state->data     = data;
-   state->size     = size;
-   state->autosave = autosave;
-   state->mute     = autosave; /* don't show OSD messages if we are auto-saving */
+   state->data             = data;
+   state->size             = size;
+   state->autosave         = autosave;
+   state->mute             = autosave; /* don't show OSD messages if we are auto-saving */
+   state->thumbnail_enable = settings->savestate_thumbnail_enable;
 
-   task->type      = TASK_TYPE_BLOCKING;
-   task->state     = state;
-   task->handler   = task_save_handler;
-   task->callback  = save_state_cb;
-   task->title     = strdup(msg_hash_to_str(MSG_SAVING_STATE));
-   task->mute      = state->mute;
+   task->type              = TASK_TYPE_BLOCKING;
+   task->state             = state;
+   task->handler           = task_save_handler;
+   task->callback          = save_state_cb;
+   task->title             = strdup(msg_hash_to_str(MSG_SAVING_STATE));
+   task->mute              = state->mute;
 
    task_queue_ctl(TASK_QUEUE_CTL_PUSH, task);
 
@@ -1260,8 +1242,6 @@ bool content_rename_state(const char *origin, const char *dest)
 */
 bool content_reset_savestate_backups(void)
 {
-   RARCH_LOG("Resetting undo buffers.\n");
-
    if (undo_save_buf.data)
    {
       free(undo_save_buf.data);
@@ -1402,7 +1382,6 @@ bool content_save_ram_file(unsigned slot)
 
    if (!content_get_memory(&mem_info, &ram, slot))
       return false;
-
 
    RARCH_LOG("%s #%u %s \"%s\".\n",
          msg_hash_to_str(MSG_SAVING_RAM_TYPE),

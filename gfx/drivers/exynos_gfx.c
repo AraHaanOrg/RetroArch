@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2013-2015 - Tobias Jakobi
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -35,11 +36,14 @@
 #include "../../config.h"
 #endif
 
+#ifdef HAVE_MENU
+#include "../../menu/menu_driver.h"
+#endif
+
 #include "../common/drm_common.h"
 #include "../font_driver.h"
+#include "../../configuration.h"
 #include "../../retroarch.h"
-#include "../../runloop.h"
-#include "../../runloop.h"
 
 /* TODO: Honor these properties: vsync, menu rotation, menu alpha, aspect ratio change */
 
@@ -1045,7 +1049,7 @@ static int exynos_init_font(struct exynos_video *vid)
    const unsigned buf_height = defaults[EXYNOS_IMAGE_FONT].height;
    const unsigned buf_width  = align_common(pdata->aspect * (float)buf_height, 16);
    const unsigned buf_bpp    = defaults[EXYNOS_IMAGE_FONT].bpp;
-   settings_t *settings     = config_get_ptr();
+   settings_t *settings      = config_get_ptr();
 
    if (!settings->video.font_enable)
       return 0;
@@ -1159,7 +1163,6 @@ static int exynos_render_msg(struct exynos_video *vid,
    return exynos_blend_font(pdata);
 }
 
-
 static void *exynos_gfx_init(const video_info_t *video,
       const input_driver_t **input, void **input_data)
 {
@@ -1272,11 +1275,11 @@ static void exynos_gfx_free(void *data)
 }
 
 static bool exynos_gfx_frame(void *data, const void *frame, unsigned width,
-      unsigned height, uint64_t frame_count, unsigned pitch, const char *msg)
+      unsigned height, uint64_t frame_count, unsigned pitch, const char *msg,
+      video_frame_info_t *video_info)
 {
    struct exynos_video *vid = data;
    struct exynos_page *page = NULL;
-   settings_t *settings      = config_get_ptr();
 
    /* Check if neither menu nor core framebuffer is to be displayed. */
    if (!vid->menu_active && !frame)
@@ -1304,15 +1307,6 @@ static bool exynos_gfx_frame(void *data, const void *frame, unsigned width,
          goto fail;
    }
 
-   if (settings->fps_show)
-   {
-      char buffer[128]     = {0};
-      char buffer_fps[128] = {0};
-      video_monitor_get_fps(buffer, sizeof(buffer),
-            settings->fps_show ? buffer_fps : NULL, sizeof(buffer_fps));
-      runloop_msg_queue_push(buffer_fps, 1, 1, false);
-   }
-
    /* If at this point the dimension parameters are still zero, setup some  *
     * fake blit parameters so that menu and font rendering work properly.   */
    if (vid->width == 0 || vid->height == 0)
@@ -1325,6 +1319,9 @@ static bool exynos_gfx_frame(void *data, const void *frame, unsigned width,
    {
       if (exynos_blend_menu(vid->data, vid->menu_rotation) != 0)
          goto fail;
+#ifdef HAVE_MENU
+      menu_driver_frame(video_info);
+#endif
    }
 
    if (msg)
@@ -1523,7 +1520,7 @@ static bool exynos_gfx_set_shader(void *data,
    return false; 
 }
 
-static bool exynos_gfx_read_viewport(void *data, uint8_t *buffer)
+static bool exynos_gfx_read_viewport(void *data, uint8_t *buffer, bool is_idle)
 {
    (void)data;
    (void)buffer;

@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -1028,9 +1028,10 @@ static HRESULT xbox_io_mount(const char* szDrive, char* szDevice)
 	STRING DeviceName, LinkName;
 	char szDestinationDrive[PATH_MAX_LENGTH];
 
-	snprintf(szDestinationDrive, sizeof(szDestinationDrive), PATH_MAX_LENGTH, "\\??\\%s", szDrive);
+	snprintf(szDestinationDrive, sizeof(szDestinationDrive),
+         "\\??\\%s", szDrive);
 	RtlInitAnsiString(&DeviceName, szDevice);
-	RtlInitAnsiString(&LinkName, (CHAR)szDestinationDrive);
+	RtlInitAnsiString(&LinkName, (PCHAR)szDestinationDrive);
 	ObDeleteSymbolicLink(&LinkName);
 	return (HRESULT)ObCreateSymbolicLink(&LinkName, &DeviceName);
 }
@@ -1373,18 +1374,36 @@ static int frontend_xdk_parse_drive_list(void *data)
 
 #if defined(_XBOX1)
    menu_entries_append_enum(list,
-         "C:", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "C:",
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
    menu_entries_append_enum(list,
-         "D:", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "D:",
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
    menu_entries_append_enum(list,
-         "E:", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "E:",
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
    menu_entries_append_enum(list,
-         "F:", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "F:",
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
    menu_entries_append_enum(list,
-         "G:", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "G:",
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
 #elif defined(_XBOX360)
    menu_entries_append_enum(list,
-         "game:", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "game:",
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
 #endif
 #endif
 

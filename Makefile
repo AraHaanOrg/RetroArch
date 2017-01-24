@@ -1,4 +1,5 @@
 HAVE_FILE_LOGGER=1
+HAVE_CC_RESAMPLER=1
 NEED_CXX_LINKER=0
 MISSING_DECLS   =0
 
@@ -20,6 +21,11 @@ OBJ :=
 LIBS :=
 DEFINES := -DHAVE_CONFIG_H -DRARCH_INTERNAL -DHAVE_OVERLAY
 DEFINES += -DGLOBAL_CONFIG_DIR='"$(GLOBAL_CONFIG_DIR)"'
+
+ifneq ($(findstring DOS,$(OS)),)
+   CFLAGS += -march=i386
+   LDFLAGS += -lemu
+endif
 
 ifneq ($(findstring Win32,$(OS)),)
    LDFLAGS += -static-libgcc

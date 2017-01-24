@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -39,7 +39,8 @@ typedef struct audio_driver
     *
     * Returns: audio driver handle on success, otherwise NULL.
     **/
-   void *(*init)(const char *device, unsigned rate, unsigned latency);
+   void *(*init)(const char *device, unsigned rate,
+         unsigned latency, unsigned block_frames, unsigned *new_rate);
 
    /*
     * @data         : Pointer to audio data handle.
@@ -54,7 +55,7 @@ typedef struct audio_driver
    bool (*stop)(void *data);
 
    /* Starts driver. */
-   bool (*start)(void *data);
+   bool (*start)(void *data, bool is_shutdown);
 
    /* Is the audio driver currently running? */
    bool (*alive)(void *data);
@@ -170,7 +171,7 @@ bool audio_driver_find_driver(void);
 
 bool audio_driver_toggle_mute(void);
 
-bool audio_driver_start(void);
+bool audio_driver_start(bool is_shutdown);
 
 bool audio_driver_stop(void);
 

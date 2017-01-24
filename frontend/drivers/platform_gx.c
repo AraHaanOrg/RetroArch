@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2015 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *  Copyright (C) 2012-2015 - Michael Lelli
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
@@ -207,7 +207,7 @@ static void frontend_gx_get_environment_settings(
 #ifdef HW_DOL
    chdir("carda:/retroarch");
 #endif
-   getcwd(g_defaults.dir.core, MAXPATHLEN);
+   getcwd(g_defaults.dir.core, PATH_MAX_LENGTH);
 
    last_slash = strrchr(g_defaults.dir.core, '/');
    if (last_slash)
@@ -223,6 +223,9 @@ static void frontend_gx_get_environment_settings(
 
    fill_pathname_join(g_defaults.dir.core_info, g_defaults.dir.core,
          "info", sizeof(g_defaults.dir.core_info));
+   fill_pathname_join(g_defaults.dir.autoconfig,
+         g_defaults.dir.core, "autoconfig",
+         sizeof(g_defaults.dir.autoconfig));
    fill_pathname_join(g_defaults.dir.overlay, g_defaults.dir.core,
          "overlays", sizeof(g_defaults.dir.overlay));
    fill_pathname_join(g_defaults.path.config, g_defaults.dir.port,
@@ -472,14 +475,26 @@ static int frontend_gx_parse_drive_list(void *data)
    file_list_t *list = (file_list_t*)data;
 #ifdef HW_RVL
    menu_entries_append_enum(list,
-         "sd:/", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "sd:/",
+         msg_hash_to_str(MSG_EXTERNAL_APPLICATION_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
    menu_entries_append_enum(list,
-         "usb:/", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "usb:/",
+         msg_hash_to_str(MSG_EXTERNAL_APPLICATION_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
 #endif
    menu_entries_append_enum(list,
-         "carda:/", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "carda:/",
+         msg_hash_to_str(MSG_EXTERNAL_APPLICATION_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
    menu_entries_append_enum(list,
-         "cardb:/", "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+         "cardb:/",
+         msg_hash_to_str(MSG_EXTERNAL_APPLICATION_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
 #endif
 
    return 0;

@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -32,7 +32,6 @@
 #include "../input/input_overlay.h"
 #endif
 
-#include "font_driver.h"
 #include "video_defines.h"
 #include "video_filter.h"
 #include "video_shader_parse.h"
@@ -53,6 +52,10 @@ typedef struct video_info
    bool vsync;
 
    bool force_aspect;
+
+   unsigned swap_interval;
+
+   bool font_enable;
 
 #ifdef GEKKO
    /* TODO - we can't really have driver system-specific
@@ -80,6 +83,57 @@ typedef struct video_info
    uintptr_t parent;
 #endif
 } video_info_t;
+
+typedef struct video_frame_info
+{
+   float menu_wallpaper_opacity;
+   float refresh_rate;
+   bool shared_context;
+   bool black_frame_insertion;
+   bool hard_sync;
+   unsigned hard_sync_frames;
+   bool fps_show;
+   bool scale_integer;
+   unsigned aspect_ratio_idx;
+   bool post_filter_record;
+   unsigned max_swapchain_images;
+   bool windowed_fullscreen;
+   bool fullscreen;
+   unsigned monitor_index;
+   bool font_enable;
+   char fps_text[128];
+   uint64_t frame_count;
+
+   unsigned width;
+   unsigned height;
+
+   float font_msg_pos_x;
+   float font_msg_pos_y;
+   float font_msg_color_r;
+   float font_msg_color_g;
+   float font_msg_color_b;
+   bool use_rgba;
+   bool libretro_running;
+
+   float menu_header_opacity;
+   float menu_footer_opacity;
+
+   bool xmb_shadows_enable;
+   float xmb_alpha_factor;
+   unsigned xmb_theme;
+   unsigned xmb_color_theme;
+   unsigned menu_shader_pipeline;
+
+   unsigned materialui_color_theme;
+
+   bool battery_level_enable;
+   bool timedate_enable;
+   bool runloop_is_slowmotion;
+   bool runloop_is_idle;
+   bool runloop_is_paused;
+
+   bool menu_is_alive;
+} video_frame_info_t;
 
 /* Optionally implemented interface to poke more
  * deeply into video driver. */
@@ -114,7 +168,7 @@ typedef struct video_poke_interface
    /* Enable or disable rendering. */
    void (*set_texture_enable)(void *data, bool enable, bool full_screen);
    void (*set_osd_msg)(void *data, const char *msg,
-         const struct font_params *params, void *font);
+         const void *params, void *font);
 
    void (*show_mouse)(void *data, bool state);
    void (*grab_mouse_toggle)(void *data);
@@ -141,7 +195,7 @@ typedef struct video_viewport
 typedef bool (*video_driver_frame_t)(void *data,
       const void *frame, unsigned width,
       unsigned height, uint64_t frame_count,
-      unsigned pitch, const char *msg);
+      unsigned pitch, const char *msg, video_frame_info_t *video_info);
 
 typedef struct video_driver
 {
@@ -188,7 +242,7 @@ typedef struct video_driver
    void (*viewport_info)(void *data, struct video_viewport *vp);
 
    /* Reads out in BGR byte order (24bpp). */
-   bool (*read_viewport)(void *data, uint8_t *buffer);
+   bool (*read_viewport)(void *data, uint8_t *buffer, bool is_idle);
 
    /* Returns a pointer to a newly allocated buffer that can
     * (and must) be passed to free() by the caller, containing a
@@ -220,7 +274,7 @@ extern struct aspect_ratio_elem aspectratio_lut[ASPECT_RATIO_END];
 #if defined(RARCH_CONSOLE) || defined(RARCH_MOBILE)
 #define video_driver_has_windowed() (false)
 #else
-#define video_driver_has_windowed() (current_video->has_windowed(video_driver_data))
+#define video_driver_has_windowed() (current_video->has_windowed && current_video->has_windowed(video_driver_data))
 #endif
 
 #define video_driver_cached_frame_has_valid_framebuffer() (frame_cache_data ? (frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID) : false)
@@ -251,9 +305,9 @@ void video_driver_hide_mouse(void);
 void video_driver_set_nonblock_state(bool toggle);
 bool video_driver_find_driver(void);
 void video_driver_apply_state_changes(void);
-bool video_driver_read_viewport(uint8_t *buffer);
+bool video_driver_read_viewport(uint8_t *buffer, bool is_idle);
 bool video_driver_cached_frame(void);
-uint64_t *video_driver_get_frame_count_ptr(void);
+uint64_t video_driver_get_frame_count(void);
 bool video_driver_frame_filter_alive(void);
 bool video_driver_frame_filter_is_32bit(void);
 void video_driver_default_settings(void);
@@ -263,7 +317,6 @@ void video_driver_set_own_driver(void);
 void video_driver_unset_own_driver(void);
 bool video_driver_owns_driver(void);
 bool video_driver_is_hw_context(void);
-bool video_driver_is_threaded(void);
 void video_driver_deinit_hw_context(void);
 struct retro_hw_render_callback *video_driver_get_hw_context(void);
 const struct retro_hw_render_context_negotiation_interface 
@@ -286,6 +339,7 @@ bool video_driver_get_hw_render_interface(const struct
 bool video_driver_get_viewport_info(struct video_viewport *viewport);
 void video_driver_set_title_buf(void);
 void video_driver_monitor_adjust_system_rates(void);
+bool video_driver_is_threaded(void);
 
 /**
  * video_driver_find_handle:
@@ -348,7 +402,7 @@ bool video_driver_get_video_output_size(
       unsigned *width, unsigned *height);
 
 void video_driver_set_osd_msg(const char *msg,
-      const struct font_params *params, void *font);
+      const void *params, void *font);
 
 void video_driver_set_texture_enable(bool enable, bool full_screen);
 
@@ -440,22 +494,6 @@ void video_monitor_set_refresh_rate(float hz);
 bool video_monitor_fps_statistics(double *refresh_rate,
       double *deviation, unsigned *sample_points);
 
-/**
- * video_monitor_get_fps:
- * @buf           : string suitable for Window title
- * @size          : size of buffer.
- * @buf_fps       : string of raw FPS only (optional).
- * @size_fps      : size of raw FPS buffer.
- *
- * Get the amount of frames per seconds.
- *
- * Returns: true if framerate per seconds could be obtained,
- * otherwise false.
- *
- **/
-bool video_monitor_get_fps(char *buf, size_t size,
-      char *buf_fps, size_t size_fps);
-
 unsigned video_pixel_get_alignment(unsigned pitch);
 
 const video_poke_interface_t *video_driver_get_poke(void);
@@ -514,7 +552,11 @@ bool video_driver_texture_load(void *data,
 
 bool video_driver_texture_unload(uintptr_t *id);
 
+void video_driver_build_info(video_frame_info_t *video_info);
+
 void video_driver_reinit(void);
+
+void video_driver_get_window_title(char *buf, unsigned len);
 
 extern video_driver_t video_gl;
 extern video_driver_t video_vulkan;
@@ -537,6 +579,8 @@ extern video_driver_t video_sunxi;
 extern video_driver_t video_drm;
 extern video_driver_t video_xshm;
 extern video_driver_t video_caca;
+extern video_driver_t video_gdi;
+extern video_driver_t video_vga;
 extern video_driver_t video_null;
 
 extern const void *frame_cache_data;

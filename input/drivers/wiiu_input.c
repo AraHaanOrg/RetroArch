@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2014-2015 - Ali Bouhlel
+ *  Copyright (C) 2014-2017 - Ali Bouhlel
+ *  Copyright (C) 2014-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -18,18 +19,19 @@
 
 #include <boolean.h>
 #include <libretro.h>
+#include <retro_miscellaneous.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../../config.h"
 #endif
 
-#include "../../configuration.h"
 #include "../input_config.h"
+#include "../input_driver.h"
 #include "../input_joypad_driver.h"
 
 #include "wiiu_dbg.h"
 
-#define MAX_PADS 1
+#define MAX_PADS 5
 
 typedef struct wiiu_input
 {
@@ -47,24 +49,24 @@ static void wiiu_input_poll(void *data)
       wiiu->joypad->poll();
 }
 
-static int16_t wiiu_input_state(void *data, const struct retro_keybind **binds,
+static int16_t wiiu_input_state(void *data,
+      rarch_joypad_info_t joypad_info,
+      const struct retro_keybind **binds,
       unsigned port, unsigned device,
       unsigned idx, unsigned id)
 {
-   wiiu_input_t *wiiu = (wiiu_input_t*)data;
+   wiiu_input_t *wiiu         = (wiiu_input_t*)data;
 
-   if(!wiiu || (port > 0) || !binds || !binds[port])
+   if(!wiiu || !(port < MAX_PADS) || !binds || !binds[port])
       return 0;
 
    switch (device)
    {
       case RETRO_DEVICE_JOYPAD:
-         if (binds[port][id].valid)
-            return input_joypad_pressed(wiiu->joypad, port, binds[port], id);
-         break;
+         return input_joypad_pressed(wiiu->joypad, joypad_info, port, binds[port], id);
       case RETRO_DEVICE_ANALOG:
          if (binds[port])
-            return input_joypad_analog(wiiu->joypad, port, idx, id, binds[port]);
+            return input_joypad_analog(wiiu->joypad, joypad_info, port, idx, id, binds[port]);
          break;
    }
 
@@ -81,15 +83,14 @@ static void wiiu_input_free_input(void *data)
    free(data);
 }
 
-static void* wiiu_input_initialize(void)
+static void* wiiu_input_init(const char *joypad_driver)
 {
-   settings_t *settings = config_get_ptr();
    wiiu_input_t *wiiu = (wiiu_input_t*)calloc(1, sizeof(*wiiu));
    if (!wiiu)
       return NULL;
 
-   DEBUG_STR(settings->input.joypad_driver);
-   wiiu->joypad = input_joypad_init_driver(settings->input.joypad_driver, wiiu);
+   DEBUG_STR(joypad_driver);
+   wiiu->joypad = input_joypad_init_driver(joypad_driver, wiiu);
 
    return wiiu;
 }
@@ -151,7 +152,7 @@ static void wiiu_input_keyboard_mapping_set_block(void *data, bool value)
 }
 
 input_driver_t input_wiiu = {
-   wiiu_input_initialize,
+   wiiu_input_init,
    wiiu_input_poll,
    wiiu_input_state,
    wiiu_input_meta_key_pressed,

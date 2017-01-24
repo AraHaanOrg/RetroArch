@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2016 - Hans-Kristian Arntzen
+ *  Copyright (C) 2016-2017 - Hans-Kristian Arntzen
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -20,8 +20,6 @@
 #include "../common/vulkan_common.h"
 
 #include "../font_driver.h"
-
-#include "../../configuration.h"
 
 typedef struct
 {
@@ -236,10 +234,9 @@ static void vulkan_raster_font_render_message(
 }
 
 static void vulkan_raster_font_setup_viewport(
+      unsigned width, unsigned height,
       vulkan_raster_t *font, bool full_screen)
 {
-   unsigned width, height;
-   video_driver_get_size(&width, &height);
    video_driver_set_viewport(width, height, full_screen, false);
 }
 
@@ -258,24 +255,27 @@ static void vulkan_raster_font_flush(vulkan_raster_t *font)
    vulkan_draw_triangles(font->vk, &call);
 }
 
-static void vulkan_raster_font_render_msg(void *data, const char *msg,
+static void vulkan_raster_font_render_msg(
+      video_frame_info_t *video_info,
+      void *data, const char *msg,
       const void *userdata)
 {
-   float x, y, scale, drop_mod, drop_alpha;
    float color[4], color_dark[4];
    int drop_x, drop_y;
    bool full_screen;
    unsigned max_glyphs;
    enum text_alignment text_align;
+   float x, y, scale, drop_mod, drop_alpha;
    vk_t *vk                         = NULL;
    vulkan_raster_t *font            = (vulkan_raster_t*)data;
-   settings_t *settings             = config_get_ptr();
+   unsigned width                   = video_info->width;
+   unsigned height                  = video_info->height;
    const struct font_params *params = (const struct font_params*)userdata;
 
    if (!font || !msg || !*msg)
       return;
 
-   vk = font->vk;
+   vk             = font->vk;
 
    if (params)
    {
@@ -300,24 +300,24 @@ static void vulkan_raster_font_render_msg(void *data, const char *msg,
    }
    else
    {
-      x           = settings->video.msg_pos_x;
-      y           = settings->video.msg_pos_y;
+      x           = video_info->font_msg_pos_x;
+      y           = video_info->font_msg_pos_y;
       scale       = 1.0f;
       full_screen = true;
       text_align  = TEXT_ALIGN_LEFT;
 
-      color[0]    = settings->video.msg_color_r;
-      color[1]    = settings->video.msg_color_g;
-      color[2]    = settings->video.msg_color_b;
-      color[3] = 1.0f;
+      color[0]    = video_info->font_msg_color_r;
+      color[1]    = video_info->font_msg_color_g;
+      color[2]    = video_info->font_msg_color_b;
+      color[3]    = 1.0f;
 
-      drop_x = -2;
-      drop_y = -2;
-      drop_mod = 0.3f;
-      drop_alpha = 1.0f;
+      drop_x      = -2;
+      drop_y      = -2;
+      drop_mod    = 0.3f;
+      drop_alpha  = 1.0f;
    }
 
-   vulkan_raster_font_setup_viewport(font, full_screen);
+   vulkan_raster_font_setup_viewport(width, height, font, full_screen);
 
    max_glyphs = strlen(msg);
    if (drop_x || drop_y)
@@ -327,8 +327,8 @@ static void vulkan_raster_font_render_msg(void *data, const char *msg,
          6 * sizeof(struct vk_vertex) * max_glyphs, &font->range))
       return;
 
-   font->vertices = 0;
-   font->pv = (struct vk_vertex*)font->range.data;
+   font->vertices   = 0;
+   font->pv         = (struct vk_vertex*)font->range.data;
 
    if (drop_x || drop_y)
    {
@@ -359,7 +359,8 @@ static const struct font_glyph *vulkan_raster_font_get_glyph(
    return font->font_driver->get_glyph((void*)font->font_driver, code);
 }
 
-static void vulkan_raster_font_flush_block(void *data)
+static void vulkan_raster_font_flush_block(unsigned width, unsigned height,
+      void *data)
 {
    (void)data;
 }

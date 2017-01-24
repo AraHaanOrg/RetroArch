@@ -167,12 +167,18 @@ enum event_command
    CMD_EVENT_NETWORK_DEINIT,
    /* Initializes network system. */
    CMD_EVENT_NETWORK_INIT,
-   /* Initializes netplay system. */
+   /* Initializes netplay system with a string or no host specified. */
    CMD_EVENT_NETPLAY_INIT,
+   /* Initializes netplay system with a direct host specified. */
+   CMD_EVENT_NETPLAY_INIT_DIRECT,
+   /* Initializes netplay system with a direct host specified after loading content. */
+   CMD_EVENT_NETPLAY_INIT_DIRECT_DEFERRED,
    /* Deinitializes netplay system. */
    CMD_EVENT_NETPLAY_DEINIT,
    /* Flip netplay players. */
    CMD_EVENT_NETPLAY_FLIP_PLAYERS,
+   /* Switch between netplay gaming and watching. */
+   CMD_EVENT_NETPLAY_GAME_WATCH,
    /* Initializes BSV movie. */
    CMD_EVENT_BSV_MOVIE_INIT,
    /* Deinitializes BSV movie. */

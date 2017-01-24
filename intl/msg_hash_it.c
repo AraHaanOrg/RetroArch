@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -1188,7 +1188,7 @@ const char *msg_hash_to_str_it(enum msg_hash_enums msg)
       case MENU_ENUM_LABEL_VALUE_LANG_POLISH:
          return "Polacco";
       case MENU_ENUM_LABEL_VALUE_LOAD_ARCHIVE:
-         return "Carica archivio con il core";
+         return "Carica archivio con il core"; /* TODO/FIXME */
       case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_LIST:
          return "Carica Contenuto";
       case MENU_ENUM_LABEL_VALUE_NO_ACHIEVEMENTS_TO_DISPLAY:
@@ -1196,7 +1196,7 @@ const char *msg_hash_to_str_it(enum msg_hash_enums msg)
       case MENU_ENUM_LABEL_VALUE_NO_ENTRIES_TO_DISPLAY:
          return "Nessuna voce da mostrare.";
       case MENU_ENUM_LABEL_VALUE_OPEN_ARCHIVE:
-         return "Apri archivio come cartella";
+         return "Apri archivio come cartella"; /* TODO/FIXME */
       case MENU_ENUM_LABEL_VALUE_OVERLAY_AUTOLOAD_PREFERRED:
          return "Autocarica overlay preferito";
       case MENU_ENUM_LABEL_VALUE_PRIVACY_SETTINGS:
@@ -1510,7 +1510,7 @@ const char *msg_hash_to_str_it(enum msg_hash_enums msg)
       case MENU_ENUM_LABEL_VALUE_VIDEO_CROP_OVERSCAN:
          return "Riduci Overscan (Riavvia)";
       case MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO_INDEX:
-         return "Indice di aspect ratio";
+         return "Aspect ratio";
       case MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO_AUTO:
          return "Aspect ratio automatico";
       case MENU_ENUM_LABEL_VALUE_VIDEO_FORCE_ASPECT:
@@ -1611,8 +1611,8 @@ const char *msg_hash_to_str_it(enum msg_hash_enums msg)
          return "Abilita riavvolgi";
       case MENU_ENUM_LABEL_VALUE_CONTENT_COLLECTION_LIST:
          return "Collezione";
-      case MENU_ENUM_LABEL_VALUE_DETECT_CORE_LIST:
-         return "Seleziona il file ed intercetta il core";
+      case MENU_ENUM_LABEL_VALUE_FAVORITES:
+         return "Seleziona il file ed intercetta il core"; /* TODO/FIXME - update */
       case MENU_ENUM_LABEL_VALUE_DOWNLOADED_FILE_DETECT_CORE_LIST:
          return "Scarica su directories";
       case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_HISTORY:
@@ -1626,7 +1626,7 @@ const char *msg_hash_to_str_it(enum msg_hash_enums msg)
       case MENU_ENUM_LABEL_VALUE_AUDIO_VOLUME:
          return "Livello volume audio (dB)";
       case MENU_ENUM_LABEL_VALUE_AUDIO_SYNC:
-         return "Abilita sincro audio";
+         return "Sincro audio";
       case MENU_ENUM_LABEL_VALUE_AUDIO_RATE_CONTROL_DELTA:
          return "Delta di controllo frequenza audio";
       case MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_NUM_PASSES:
@@ -1729,8 +1729,6 @@ const char *msg_hash_to_str_it(enum msg_hash_enums msg)
          return "Nessun oggetto.";
       case MENU_ENUM_LABEL_VALUE_CORE_LIST:
          return "Carica Core";
-      case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT:
-         return "Seleziona contenuto";
       case MENU_ENUM_LABEL_VALUE_CLOSE_CONTENT:
          return "Chiudi";
       case MENU_ENUM_LABEL_VALUE_MANAGEMENT:

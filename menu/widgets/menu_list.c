@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -172,6 +172,11 @@ void menu_list_flush_stack(menu_list_t *list,
 
       menu_entries_get_last(menu_list,
             &path, &label, &type, &entry_idx);
+
+#if 0
+      RARCH_LOG("path: %s\n", path);
+      RARCH_LOG("label: %s\n", label);
+#endif
    }
 }
 

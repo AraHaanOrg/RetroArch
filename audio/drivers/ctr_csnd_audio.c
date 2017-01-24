@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2014-2016 - Ali Bouhlel
+ *  Copyright (C) 2014-2017 - Ali Bouhlel
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -18,9 +18,8 @@
 #include <malloc.h>
 
 #include "../audio_driver.h"
-#include "../../configuration.h"
+
 #include "../../performance_counters.h"
-#include "../../runloop.h"
 
 typedef struct
 {
@@ -95,7 +94,8 @@ Result csndPlaySound_custom(int chn, u32 flags, float vol, float pan,
 
 	if (loopMode == CSND_LOOPMODE_NORMAL && paddr1 > paddr0)
 	{
-		// Now that the first block is playing, configure the size of the subsequent blocks
+		/* Now that the first block is playing, 
+       * configure the size of the subsequent blocks */
 		size -= paddr1 - paddr0;
 		CSND_SetBlock(chn, 1, paddr1, size);
 	}
@@ -103,10 +103,11 @@ Result csndPlaySound_custom(int chn, u32 flags, float vol, float pan,
 	return 0;
 }
 
-static void *ctr_csnd_audio_init(const char *device, unsigned rate, unsigned latency)
+static void *ctr_csnd_audio_init(const char *device, unsigned rate, unsigned latency,
+      unsigned block_frames,
+      unsigned *new_rate)
 {
    ctr_csnd_audio_t *ctr = (ctr_csnd_audio_t*)calloc(1, sizeof(ctr_csnd_audio_t));
-   settings_t *settings  = config_get_ptr();
 
    if (!ctr)
       return NULL;
@@ -115,7 +116,7 @@ static void *ctr_csnd_audio_init(const char *device, unsigned rate, unsigned lat
    (void)rate;
    (void)latency;
 
-   settings->audio.out_rate  = CTR_CSND_AUDIO_RATE;
+   *new_rate                 = CTR_CSND_AUDIO_RATE;
 
    ctr->l                    = linearAlloc(CTR_CSND_AUDIO_SIZE);
    ctr->r                    = linearAlloc(CTR_CSND_AUDIO_SIZE);
@@ -148,7 +149,9 @@ static void ctr_csnd_audio_free(void *data)
 {
    ctr_csnd_audio_t* ctr = (ctr_csnd_audio_t*)data;
 
-//   csndExit();
+#if 0
+   csndExit();
+#endif
    CSND_SetPlayState(0x8, 0);
    CSND_SetPlayState(0x9, 0);
    csndExecCmds(false);
@@ -241,14 +244,13 @@ static bool ctr_csnd_audio_alive(void *data)
    return ctr->playing;
 }
 
-static bool ctr_csnd_audio_start(void *data)
+static bool ctr_csnd_audio_start(void *data, bool is_shutdown)
 {
    ctr_csnd_audio_t* ctr = (ctr_csnd_audio_t*)data;
 
    /* Prevents restarting audio when the menu
     * is toggled off on shutdown */
-
-   if (runloop_ctl(RUNLOOP_CTL_IS_SHUTDOWN, NULL))
+   if (is_shutdown)
       return true;
 
 #if 0

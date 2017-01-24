@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -28,6 +28,10 @@
 #include "../msg_hash.h"
 #include "../verbosity.h"
 #include "video_shader_parse.h"
+
+#ifdef HAVE_SLANG
+#include "drivers_shader/slang_preprocess.h"
+#endif
 
 #define WRAP_MODE_CLAMP_TO_BORDER      0x3676ed11U
 #define WRAP_MODE_CLAMP_TO_EDGE        0x9427a608U
@@ -123,22 +127,25 @@ static bool video_shader_parse_pass(config_file_t *conf,
    char wrap_mode[64];
    char frame_count_mod_buf[64];
    char srgb_output_buf[64];
-   char fp_fbo_buf[64]          = {0};
-   char mipmap_buf[64]          = {0};
-   char alias_buf[64]           = {0};
-   char scale_name_buf[64]      = {0};
-   char attr_name_buf[64]       = {0};
-   char scale_type[64]          = {0};
-   char scale_type_x[64]        = {0};
-   char scale_type_y[64]        = {0};
-   char frame_count_mod[64]     = {0};
+   char fp_fbo_buf[64];
+   char mipmap_buf[64];
+   char alias_buf[64];
+   char scale_name_buf[64];
+   char attr_name_buf[64];
+   char scale_type[64];
+   char scale_type_x[64];
+   char scale_type_y[64];
+   char frame_count_mod[64];
    struct gfx_fbo_scale *scale  = NULL;
    bool tmp_bool                = false;
    float fattr                  = 0.0f;
    int iattr                    = 0;
 
-   tmp_str[0] = shader_name[0] = filter_name_buf[0] = 
-      wrap_name_buf[0] = wrap_mode[0] = frame_count_mod_buf[0] = '\0';
+   fp_fbo_buf[0]     = mipmap_buf[0]    = alias_buf[0]           = 
+   scale_name_buf[0] = attr_name_buf[0] = scale_type[0]          =
+   scale_type_x[0]   = scale_type_y[0]  = frame_count_mod[0]     =
+   tmp_str[0]        = shader_name[0]   = filter_name_buf[0]     = 
+   wrap_name_buf[0]  = wrap_mode[0]     = frame_count_mod_buf[0] = '\0';
    srgb_output_buf[0] = '\0';
 
    /* Source */
@@ -480,6 +487,17 @@ bool video_shader_resolve_parameters(config_file_t *conf,
 
    for (i = 0; i < shader->passes; i++)
    {
+#ifdef HAVE_SLANG
+      /* First try to use the more robust slang implementation to support #includes. */
+      /* FIXME: The check for slang can be removed if it's sufficiently tested for
+       * GLSL/Cg as well, it should be the same implementation. */
+      if (string_is_equal(path_get_extension(shader->pass[i].source.path), "slang") &&
+            slang_preprocess_parse_parameters(shader->pass[i].source.path, shader))
+         continue;
+      /* If that doesn't work, fallback to the old path.
+       * Ideally, we'd get rid of this path sooner or later. */
+#endif
+
       char line[4096];
       RFILE *file = filestream_open(shader->pass[i].source.path, RFILE_MODE_READ_TEXT, -1);
 

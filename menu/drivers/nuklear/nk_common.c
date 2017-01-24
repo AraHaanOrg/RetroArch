@@ -1,7 +1,7 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2014-2015 - Jean-Andr� Santoni
- *  Copyright (C) 2016      - Andr�s Su�rez
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2014-2017 - Jean-Andr� Santoni
+ *  Copyright (C) 2016-2017 - Andr�s Su�rez
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -49,9 +49,10 @@ struct nk_image nk_common_image_load(const char *filename)
     struct texture_image ti;
     uintptr_t tex;
 
-    ti.width  = 0;
-    ti.height = 0;
-    ti.pixels = NULL;
+    ti.width         = 0;
+    ti.height        = 0;
+    ti.pixels        = NULL;
+    ti.supports_rgba = video_driver_supports_rgba();
 
     image_texture_load(&ti, filename);
 

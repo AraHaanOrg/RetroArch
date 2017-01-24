@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -30,9 +30,7 @@
 #include "x11_common.h"
 #include "../../frontend/frontend_driver.h"
 #include "../../input/common/input_x11_common.h"
-#include "../../configuration.h"
 #include "../../verbosity.h"
-#include "../../runloop.h"
 
 #ifdef HAVE_DBUS
 #include <dbus/dbus.h>
@@ -46,6 +44,8 @@ static bool g_x11_has_focus                 = false;
 static bool g_x11_true_full                 = false;
 Display *g_x11_dpy                          = NULL;
 
+unsigned g_x11_screen                       = 0;
+
 Colormap g_x11_cmap;
 Window   g_x11_win;
 
@@ -56,8 +56,6 @@ static Atom XA_NET_MOVERESIZE_WINDOW;
 static Atom g_x11_quit_atom;
 static XIM g_x11_xim;
 static XIC g_x11_xic;
-
-unsigned g_x11_screen;
 
 #define XA_INIT(x) XA##x = XInternAtom(dpy, #x, False)
 #define _NET_WM_STATE_ADD 1
@@ -269,7 +267,7 @@ void x11_move_window(Display *dpy, Window win, int x, int y,
 
 static void x11_set_window_class(Display *dpy, Window win)
 {
-   XClassHint hint = {0};
+   XClassHint hint;
 
    hint.res_name   = (char*)"retroarch"; /* Broken header. */
    hint.res_class  = (char*)"retroarch";
@@ -283,13 +281,10 @@ void x11_set_window_attr(Display *dpy, Window win)
 
 static void xdg_screensaver_inhibit(Window wnd)
 {
-   int ret;
-   char               cmd[64];
+   int  ret;
+   char cmd[64];
 
    cmd[0] = '\0';
-
-   if (!xdg_screensaver_available)
-      return;
 
    RARCH_LOG("Suspending screensaver (X11, xdg-screensaver).\n");
 
@@ -314,7 +309,8 @@ void x11_suspend_screensaver_xdg_screensaver(Window wnd, bool enable)
    if (!enable)
       return;
 
-   xdg_screensaver_inhibit(wnd);
+   if (xdg_screensaver_available)
+      xdg_screensaver_inhibit(wnd);
 }
 
 void x11_suspend_screensaver(Window wnd, bool enable)
@@ -326,7 +322,8 @@ void x11_suspend_screensaver(Window wnd, bool enable)
     x11_suspend_screensaver_xdg_screensaver(wnd, enable);
 }
 
-static bool get_video_mode(Display *dpy, unsigned width, unsigned height,
+static bool get_video_mode(video_frame_info_t *video_info,
+      Display *dpy, unsigned width, unsigned height,
       XF86VidModeModeInfo *mode, XF86VidModeModeInfo *desktop_mode)
 {
    float refresh_mod;
@@ -334,7 +331,6 @@ static bool get_video_mode(Display *dpy, unsigned width, unsigned height,
    bool ret                    = false;
    float minimum_fps_diff      = 0.0f;
    XF86VidModeModeInfo **modes = NULL;
-   settings_t *settings        = config_get_ptr();
 
    XF86VidModeGetAllModeLines(dpy, DefaultScreen(dpy), &num_modes, &modes);
 
@@ -348,7 +344,7 @@ static bool get_video_mode(Display *dpy, unsigned width, unsigned height,
 
    /* If we use black frame insertion, we fake a 60 Hz monitor 
     * for 120 Hz one, etc, so try to match that. */
-   refresh_mod = settings->video.black_frame_insertion ? 0.5f : 1.0f;
+   refresh_mod = video_info->black_frame_insertion ? 0.5f : 1.0f;
 
    for (i = 0; i < num_modes; i++)
    {
@@ -364,7 +360,7 @@ static bool get_video_mode(Display *dpy, unsigned width, unsigned height,
          continue;
 
       refresh = refresh_mod * m->dotclock * 1000.0f / (m->htotal * m->vtotal);
-      diff    = fabsf(refresh - settings->video.refresh_rate);
+      diff    = fabsf(refresh - video_info->refresh_rate);
 
       if (!ret || diff < minimum_fps_diff)
       {
@@ -378,12 +374,13 @@ static bool get_video_mode(Display *dpy, unsigned width, unsigned height,
    return ret;
 }
 
-bool x11_enter_fullscreen(Display *dpy, unsigned width,
+bool x11_enter_fullscreen(video_frame_info_t *video_info,
+      Display *dpy, unsigned width,
       unsigned height, XF86VidModeModeInfo *desktop_mode)
 {
    XF86VidModeModeInfo mode;
 
-   if (!get_video_mode(dpy, width, height, &mode, desktop_mode))
+   if (!get_video_mode(video_info, dpy, width, height, &mode, desktop_mode))
       return false;
 
    if (!XF86VidModeSwitchToMode(dpy, DefaultScreen(dpy), &mode))
@@ -419,10 +416,10 @@ static XineramaScreenInfo *x11_query_screens(Display *dpy, int *num_screens)
 bool x11_get_xinerama_coord(Display *dpy, int screen,
       int *x, int *y, unsigned *w, unsigned *h)
 {
-   int i, num_screens = 0;
-   bool ret = false;
-
+   int i, num_screens       = 0;
+   bool                 ret = false;
    XineramaScreenInfo *info = x11_query_screens(dpy, &num_screens);
+
    RARCH_LOG("[X11]: Xinerama screens: %d.\n", num_screens);
 
    for (i = 0; i < num_screens; i++)
@@ -486,8 +483,7 @@ bool x11_create_input_context(Display *dpy, Window win, XIM *xim, XIC *xic)
    x11_destroy_input_context(xim, xic);
 
    g_x11_has_focus = true;
-
-   *xim = XOpenIM(dpy, NULL, NULL, NULL);
+   *xim            = XOpenIM(dpy, NULL, NULL, NULL);
 
    if (!*xim)
    {
@@ -559,10 +555,9 @@ bool x11_get_metrics(void *data,
 
 bool x11_alive(void *data)
 {
-   XEvent event;
-
    while (XPending(g_x11_dpy))
    {
+      XEvent event;
       bool filter = false;
 
       /* Can get events from older windows. Check this. */
@@ -638,7 +633,8 @@ bool x11_alive(void *data)
 }
 
 void x11_check_window(void *data, bool *quit,
-   bool *resize, unsigned *width, unsigned *height, unsigned frame_count)
+   bool *resize, unsigned *width, unsigned *height,
+   bool is_shutdown)
 {
    unsigned new_width  = *width;
    unsigned new_height = *height;
@@ -662,14 +658,14 @@ void x11_get_video_size(void *data, unsigned *width, unsigned *height)
    if (!g_x11_dpy || g_x11_win == None)
    {
       Display *dpy = (Display*)XOpenDisplay(NULL);
-      *width  = 0;
-      *height = 0;
+      *width       = 0;
+      *height      = 0;
 
       if (dpy)
       {
          int screen = DefaultScreen(dpy);
-         *width  = DisplayWidth(dpy, screen);
-         *height = DisplayHeight(dpy, screen);
+         *width     = DisplayWidth(dpy, screen);
+         *height    = DisplayHeight(dpy, screen);
          XCloseDisplay(dpy);
       }
    }
@@ -719,18 +715,16 @@ bool x11_connect(void)
    return true;
 }
 
-void x11_update_window_title(void *data)
+void x11_update_title(void *data, video_frame_info_t *video_info)
 {
-   char buf[128];
-   char buf_fps[128];
-   settings_t *settings    = config_get_ptr();
+   char title[128];
 
-   buf[0] = buf_fps[0] = '\0';
+   title[0] = '\0';
 
-   if (video_monitor_get_fps(buf, sizeof(buf), buf_fps, sizeof(buf_fps)))
-      XStoreName(g_x11_dpy, g_x11_win, buf);
-   if (settings->fps_show)
-      runloop_msg_queue_push(buf_fps, 1, 1, false);
+   video_driver_get_window_title(title, sizeof(title));
+
+   if (title[0])
+      XStoreName(g_x11_dpy, g_x11_win, title);
 }
 
 bool x11_input_ctx_new(bool true_full)

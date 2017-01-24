@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -15,6 +15,7 @@
 
 #include <file/file_path.h>
 #include <compat/strl.h>
+#include <string/stdstring.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../../config.h"
@@ -23,6 +24,8 @@
 #include "../menu_driver.h"
 #include "../menu_cbs.h"
 #include "../menu_setting.h"
+
+#include "../../input/input_config.h"
 
 #include "../../configuration.h"
 #include "../../tasks/tasks_internal.h"
@@ -51,6 +54,7 @@ int action_scan_file(const char *path,
    const char *menu_label         = NULL;
    const char *menu_path          = NULL;
    menu_handle_t *menu            = NULL;
+   settings_t *settings           = config_get_ptr();
 
    fullpath[0]                    = '\0';
 
@@ -61,7 +65,10 @@ int action_scan_file(const char *path,
 
    fill_pathname_join(fullpath, menu_path, path, sizeof(fullpath));
 
-   task_push_dbscan(fullpath, false, handle_dbscan_finished);
+   task_push_dbscan(
+         settings->directory.playlist,
+         settings->path.content_database,
+         fullpath, false, handle_dbscan_finished);
 
    return 0;
 }
@@ -74,6 +81,7 @@ int action_scan_directory(const char *path,
    const char *menu_label         = NULL;
    const char *menu_path          = NULL;
    menu_handle_t *menu            = NULL;
+   settings_t *settings           = config_get_ptr();
 
    fullpath[0]                    = '\0';
 
@@ -87,7 +95,10 @@ int action_scan_directory(const char *path,
    if (path)
       fill_pathname_join(fullpath, fullpath, path, sizeof(fullpath));
 
-   task_push_dbscan(fullpath, true, handle_dbscan_finished);
+   task_push_dbscan(
+         settings->directory.playlist,
+         settings->path.content_database,
+         fullpath, true, handle_dbscan_finished);
 
    return 0;
 }
@@ -114,9 +125,43 @@ int action_switch_thumbnail(const char *path,
    return 0;
 }
 
+static int action_scan_input_desc(const char *path,
+      const char *label, unsigned type, size_t idx)
+{
+   const char *menu_label         = NULL;
+   settings_t           *settings = config_get_ptr();
+   unsigned key                   = 0;
+   unsigned inp_desc_user         = 0;
+   struct retro_keybind *target   = NULL;
+
+   menu_entries_get_last_stack(NULL, &menu_label, NULL, NULL, NULL);
+
+   if (string_is_equal(menu_label, "deferred_user_binds_list"))
+   {
+      unsigned char player_no_str = atoi(&label[1]);
+
+      inp_desc_user      = (unsigned)(player_no_str - 1);
+      key                = idx - 6;
+   }
+   else
+      key = input_config_translate_str_to_bind_id(label);
+
+   target = (struct retro_keybind*)&settings->input.binds[inp_desc_user][key];
+
+   if (target)
+   {
+      target->key     = RETROK_UNKNOWN;
+      target->joykey  = NO_BTN;
+      target->joyaxis = AXIS_NONE;
+   }
+
+   return 0;
+}
+
 static int menu_cbs_init_bind_scan_compare_type(menu_file_list_cbs_t *cbs,
       unsigned type)
 {
+
    switch (type)
    {
 #ifdef HAVE_LIBRETRODB
@@ -147,6 +192,15 @@ int menu_cbs_init_bind_scan(menu_file_list_cbs_t *cbs,
       return -1;
 
    BIND_ACTION_SCAN(cbs, NULL);
+
+   if (cbs->setting)
+   {
+      if (setting_get_type(cbs->setting) == ST_BIND)
+      {
+         BIND_ACTION_SCAN(cbs, action_scan_input_desc);
+         return 0;
+      }
+   }
 
    menu_cbs_init_bind_scan_compare_type(cbs, type);
 

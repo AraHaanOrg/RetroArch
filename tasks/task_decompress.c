@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2016 - Brad Parker
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2016-2017 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -24,6 +24,7 @@
 #include <compat/strl.h>
 
 #include "tasks_internal.h"
+#include "../file_path_special.h"
 #include "../verbosity.h"
 #include "../msg_hash.h"
 
@@ -68,7 +69,9 @@ static int file_decompressed_subdir(const char *name,
             cdata, cmode, csize, size, crc32, userdata))
       goto error;
 
+#if 0
    RARCH_LOG("[deflate subdir] Path: %s, CRC32: 0x%x\n", name, crc32);
+#endif
 
 next_file:
    return 1;
@@ -96,7 +99,7 @@ static int file_decompressed(const char *name, const char *valid_exts,
 
    /* Make directory */
    fill_pathname_join(path, dec->target_dir, name, sizeof(path));
-   path_basedir(path);
+   path_basedir_wrapper(path);
 
    if (!path_mkdir(path))
       goto error;
@@ -107,7 +110,9 @@ static int file_decompressed(const char *name, const char *valid_exts,
             cdata, cmode, csize, size, crc32, userdata))
       goto error;
 
+#if 0
    RARCH_LOG("[deflate] Path: %s, CRC32: 0x%x\n", name, crc32);
+#endif
 
 next_file:
    return 1;
@@ -123,12 +128,12 @@ error:
 static void task_decompress_handler_finished(retro_task_t *task,
       decompress_state_t *dec)
 {
-   task->finished = true;
+   task_set_finished(task, true);
 
-   if (!task->error && task->cancelled)
-      task->error = strdup("Task canceled");
+   if (!task_get_error(task) && task_get_cancelled(task))
+      task_set_error(task, strdup("Task canceled"));
 
-   if (task->error)
+   if (task_get_error(task))
       free(dec->source_file);
    else
    {
@@ -136,7 +141,7 @@ static void task_decompress_handler_finished(retro_task_t *task,
          (decompress_task_data_t*)calloc(1, sizeof(*data));
 
       data->source_file = dec->source_file;
-      task->task_data   = data;
+      task_set_data(task, data);
    }
 
    if (dec->subdir)
@@ -161,11 +166,11 @@ static void task_decompress_handler(retro_task_t *task)
          &retdec, dec->source_file,
          dec->valid_ext, file_decompressed, &userdata);
 
-   task->progress = file_archive_parse_file_progress(&dec->archive);
+   task_set_progress(task, file_archive_parse_file_progress(&dec->archive));
 
-   if (task->cancelled || ret != 0)
+   if (task_get_cancelled(task) || ret != 0)
    {
-      task->error = dec->callback_error;
+      task_set_error(task, dec->callback_error);
       file_archive_parse_file_iterate_stop(&dec->archive);
 
       task_decompress_handler_finished(task, dec);
@@ -186,11 +191,11 @@ static void task_decompress_handler_target_file(retro_task_t *task)
          &retdec, dec->source_file,
          dec->valid_ext, file_decompressed_target_file, &userdata);
 
-   task->progress = file_archive_parse_file_progress(&dec->archive);
+   task_set_progress(task, file_archive_parse_file_progress(&dec->archive));
 
-   if (task->cancelled || ret != 0)
+   if (task_get_cancelled(task) || ret != 0)
    {
-      task->error = dec->callback_error;
+      task_set_error(task, dec->callback_error);
       file_archive_parse_file_iterate_stop(&dec->archive);
 
       task_decompress_handler_finished(task, dec);
@@ -211,11 +216,11 @@ static void task_decompress_handler_subdir(retro_task_t *task)
          &retdec, dec->source_file,
          dec->valid_ext, file_decompressed_subdir, &userdata);
 
-   task->progress          = file_archive_parse_file_progress(&dec->archive);
+   task_set_progress(task, file_archive_parse_file_progress(&dec->archive));
 
-   if (task->cancelled || ret != 0)
+   if (task_get_cancelled(task) || ret != 0)
    {
-      task->error = dec->callback_error;
+      task_set_error(task, dec->callback_error);
       file_archive_parse_file_iterate_stop(&dec->archive);
 
       task_decompress_handler_finished(task, dec);

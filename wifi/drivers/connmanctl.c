@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2014-2016 - Jean-André Santoni
+ *  Copyright (C) 2014-2017 - Jean-André Santoni
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -16,6 +16,7 @@
 #include <compat/strl.h>
 #include <file/file_path.h>
 #include <string/stdstring.h>
+#include <retro_miscellaneous.h>
 
 #include "../wifi_driver.h"
 #include "../../runloop.h"

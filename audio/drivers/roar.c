@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -23,7 +24,6 @@
 #include <boolean.h>
 
 #include "../audio_driver.h"
-#include "../../configuration.h"
 #include "../../verbosity.h"
 
 typedef struct
@@ -33,7 +33,8 @@ typedef struct
    bool is_paused;
 } roar_t;
 
-static void *ra_init(const char *device, unsigned rate, unsigned latency)
+static void *ra_init(const char *device, unsigned rate, unsigned latency,
+      unsigned block_frames, unsigned *new_rate)
 {
    int err;
    roar_vs_t *vss = NULL;
@@ -108,7 +109,7 @@ static void ra_set_nonblock_state(void *data, bool state)
    roar->nonblocking = state;
 }
 
-static bool ra_start(void *data)
+static bool ra_start(void *data, bool is_shutdown)
 {
    roar_t *roar = (roar_t*)data;
    if (roar)

@@ -1,5 +1,5 @@
-/*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+﻿/*  RetroArch - A frontend for libretro.
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -16,6 +16,12 @@
 #include <string.h>
 
 #include "../msg_hash.h"
+
+#if defined(_MSC_VER) && !defined(_XBOX)
+/* https://support.microsoft.com/en-us/kb/980263 */
+#pragma execution_character_set("utf-8")
+#pragma warning( disable: 4566 )
+#endif
 
 int menu_hash_get_help_pl_enum(enum msg_hash_enums msg, char *s, size_t len)
 {
@@ -176,7 +182,7 @@ const char *msg_hash_to_str_pl(enum msg_hash_enums msg)
          return "Włąsny współczynnik";
       case MENU_ENUM_LABEL_VALUE_DATABASE_MANAGER:
          return "Menedżer bazy danych";
-      case MENU_ENUM_LABEL_VALUE_DETECT_CORE_LIST:
+      case MENU_ENUM_LABEL_VALUE_FAVORITES: /* TODO/FIXME - update */
          return "Wybierz plik i dopasuj rdzeń";
       case MENU_ENUM_LABEL_VALUE_DIRECTORY_CONTENT:
          return "<Katalog treści>";
@@ -312,8 +318,6 @@ const char *msg_hash_to_str_pl(enum msg_hash_enums msg)
          return "Liniowe";
       case MENU_ENUM_LABEL_VALUE_LOAD_ARCHIVE:
          return "Wczytaj archiwum";
-      case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT:
-         return "Wybierz plik";
       case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_HISTORY:
          return "Wczytaj z ostatnio używanych";
       case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_LIST:
@@ -753,7 +757,7 @@ const char *msg_hash_to_str_pl(enum msg_hash_enums msg)
       case MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO_AUTO:
          return "Auto współczynnik proporcji";
       case MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO_INDEX:
-         return "Indeks współczynnika proporcji";
+         return "łczynnika proporcji";
       case MENU_ENUM_LABEL_VALUE_VIDEO_BLACK_FRAME_INSERTION:
          return "Wstawiaj czarne klatki";
       case MENU_ENUM_LABEL_VALUE_VIDEO_CROP_OVERSCAN:
@@ -922,8 +926,6 @@ const char *msg_hash_to_str_pl(enum msg_hash_enums msg)
          return "Zatrzymano nagrywanie filmu.";
       case MSG_NETPLAY_FAILED:
          return "Nie udało się zainicjalizować gry sieciowej.";
-      case MSG_NETPLAY_FAILED_MOVIE_PLAYBACK_HAS_STARTED:
-         return "Odtwarzanie filmu w toku. Nie można rozpocząć gry sieciowej.";
       case MSG_PAUSED:
          return "Wstrzymano.";
       case MSG_PROGRAM:

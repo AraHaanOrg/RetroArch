@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -22,6 +22,8 @@
 #include <file/file_path.h>
 #include <compat/strl.h>
 #include <compat/posix_string.h>
+#include <string/stdstring.h>
+#include <retro_miscellaneous.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../config.h"
@@ -32,7 +34,8 @@
 #endif
 
 #include "cheat_manager.h"
-#include "../configuration.h"
+
+#include "../msg_hash.h"
 #include "../runloop.h"
 #include "../dynamic.h"
 #include "../core.h"
@@ -111,8 +114,11 @@ void cheat_manager_set_code(unsigned i, const char *str)
    cheat_manager_t *handle = cheat_manager_state;
    if (!handle)
       return;
-   handle->cheats[i].code  = strdup(str);
-   handle->cheats[i].state = true;
+
+   if (!string_is_empty(str))
+      handle->cheats[i].code  = strdup(str);
+
+   handle->cheats[i].state    = true;
 }
 
 /**
@@ -123,20 +129,18 @@ void cheat_manager_set_code(unsigned i, const char *str)
  *
  * Returns: true (1) if successful, otherwise false (0).
  **/
-bool cheat_manager_save(const char *path)
+bool cheat_manager_save(const char *path, const char *cheat_database)
 {
    bool ret;
    unsigned i;
    char buf[PATH_MAX_LENGTH];
    char cheats_file[PATH_MAX_LENGTH];
    config_file_t *conf               = NULL;
-   settings_t              *settings = config_get_ptr();
    cheat_manager_t *handle           = cheat_manager_state;
 
    buf[0] = cheats_file[0] = '\0';
 
-   fill_pathname_join(buf, settings->path.cheat_database,
-         path, sizeof(buf));
+   fill_pathname_join(buf, cheat_database, path, sizeof(buf));
 
    fill_pathname_noext(cheats_file, buf, ".cht", sizeof(cheats_file));
 
@@ -251,10 +255,10 @@ bool cheat_manager_load(const char *path)
       snprintf(code_key,   sizeof(code_key),   "cheat%u_code",   i);
       snprintf(enable_key, sizeof(enable_key), "cheat%u_enable", i);
 
-      if (config_get_string(conf, desc_key, &tmp))
+      if (config_get_string(conf, desc_key, &tmp) && !string_is_empty(tmp))
          cheat->cheats[i].desc   = strdup(tmp);
 
-      if (config_get_string(conf, code_key, &tmp))
+      if (config_get_string(conf, code_key, &tmp) && !string_is_empty(tmp))
          cheat->cheats[i].code   = strdup(tmp);
 
       if (config_get_bool(conf, enable_key, &tmp_bool))

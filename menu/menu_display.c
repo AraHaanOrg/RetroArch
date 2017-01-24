@@ -1,7 +1,7 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2014-2016 - Jean-André Santoni
- *  Copyright (C) 2016 - Brad Parker
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2014-2017 - Jean-André Santoni
+ *  Copyright (C) 2016-2017 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -83,6 +83,12 @@ static menu_display_ctx_driver_t *menu_display_ctx_drivers[] = {
 #ifdef HAVE_CACA
    &menu_display_ctx_caca,
 #endif
+#if defined(_WIN32) && !defined(_XBOX)
+   &menu_display_ctx_gdi,
+#endif
+#ifdef DJGPP
+   &menu_display_ctx_vga,
+#endif
    &menu_display_ctx_null,
    NULL,
 };
@@ -100,9 +106,7 @@ void menu_display_toggle_set_reason(enum menu_toggle_reason reason)
 static const char *menu_video_get_ident(void)
 {
 #ifdef HAVE_THREADS
-   settings_t *settings = config_get_ptr();
-
-   if (settings->video.threaded)
+   if (video_driver_is_threaded())
       return video_thread_get_ident();
 #endif
 
@@ -140,6 +144,14 @@ static bool menu_display_check_compatibility(
          break;
       case MENU_VIDEO_DRIVER_CACA:
          if (string_is_equal(video_driver, "caca"))
+            return true;
+         break;
+      case MENU_VIDEO_DRIVER_GDI:
+         if (string_is_equal(video_driver, "gdi"))
+            return true;
+         break;
+      case MENU_VIDEO_DRIVER_VGA:
+         if (string_is_equal(video_driver, "vga"))
             return true;
          break;
    }
@@ -235,9 +247,10 @@ void menu_display_font_bind_block(font_data_t *font, void *block)
    font_driver_bind_block(font, block);
 }
 
-bool menu_display_font_flush_block(font_data_t *font)
+bool menu_display_font_flush_block(unsigned width, unsigned height,
+      font_data_t *font)
 {
-   font_driver_flush(font);
+   font_driver_flush(width, height, font);
    font_driver_bind_block(font, NULL);
    return true;
 }
@@ -385,24 +398,20 @@ void menu_display_set_font_data_init(bool state)
 
 bool menu_display_get_update_pending(void)
 {
-   if (menu_animation_ctl(MENU_ANIMATION_CTL_IS_ACTIVE, NULL))
+   if (menu_animation_is_active())
       return true;
    if (menu_display_get_framebuffer_dirty_flag())
       return true;
    return false;
 }
 
-void menu_display_set_viewport(void)
+void menu_display_set_viewport(unsigned width, unsigned height)
 {
-   unsigned width, height;
-   video_driver_get_size(&width, &height);
    video_driver_set_viewport(width, height, true, false);
 }
 
-void menu_display_unset_viewport(void)
+void menu_display_unset_viewport(unsigned width, unsigned height)
 {
-   unsigned width, height;
-   video_driver_get_size(&width, &height);
    video_driver_set_viewport(width, height, false, true);
 }
 
@@ -486,16 +495,6 @@ void menu_display_draw(menu_display_ctx_draw_t *draw)
    menu_disp->draw(draw);
 }
 
-bool menu_display_shader_pipeline_active(void)
-{
-   settings_t *settings          = config_get_ptr();
-   if (!string_is_equal(menu_driver_ident(), "xmb"))
-      return false;
-   if (settings->menu.xmb.shader_pipeline == XMB_SHADER_PIPELINE_WALLPAPER)
-      return false;
-   return true;
-}
-
 void menu_display_draw_pipeline(menu_display_ctx_draw_t *draw)
 {
    if (!menu_disp || !draw || !menu_disp->draw_pipeline)
@@ -503,13 +502,12 @@ void menu_display_draw_pipeline(menu_display_ctx_draw_t *draw)
    menu_disp->draw_pipeline(draw);
 }
 
-void menu_display_draw_bg(menu_display_ctx_draw_t *draw)
+void menu_display_draw_bg(menu_display_ctx_draw_t *draw, 
+      video_frame_info_t *video_info, bool add_opacity_to_wallpaper)
 {
    static struct video_coords coords;
    const float *new_vertex       = NULL;
    const float *new_tex_coord    = NULL;
-   bool add_opacity_to_wallpaper = false;
-   settings_t *settings          = config_get_ptr();
    if (!menu_disp || !draw)
       return;
 
@@ -529,14 +527,11 @@ void menu_display_draw_bg(menu_display_ctx_draw_t *draw)
 
    draw->coords      = &coords;
 
-   if (!menu_display_libretro_running() && !menu_display_shader_pipeline_active())
-      add_opacity_to_wallpaper = true;
-   if (string_is_equal(menu_driver_ident(), "xmb")
-         && settings->menu.xmb.menu_color_theme == XMB_THEME_WALLPAPER)
+   if (!video_info->libretro_running && !draw->pipeline.active)
       add_opacity_to_wallpaper = true;
 
    if (add_opacity_to_wallpaper)
-      menu_display_set_alpha(draw->color, settings->menu.wallpaper.opacity);
+      menu_display_set_alpha(draw->color, video_info->menu_wallpaper_opacity);
 
    if (!draw->texture)
       draw->texture     = menu_display_white_texture;
@@ -544,13 +539,14 @@ void menu_display_draw_bg(menu_display_ctx_draw_t *draw)
    draw->matrix_data = (math_matrix_4x4*)menu_disp->get_default_mvp();
 }
 
-void menu_display_draw_gradient(menu_display_ctx_draw_t *draw)
+void menu_display_draw_gradient(menu_display_ctx_draw_t *draw,
+      video_frame_info_t *video_info)
 {
    draw->texture       = 0;
    draw->x             = 0;
    draw->y             = 0;
 
-   menu_display_draw_bg(draw);
+   menu_display_draw_bg(draw, video_info, false);
    menu_display_draw(draw);
 }
 
@@ -923,6 +919,7 @@ void menu_display_reset_textures_list(const char *texture_path, const char *icon
    ti.width                    = 0;
    ti.height                   = 0;
    ti.pixels                   = NULL;
+   ti.supports_rgba            = video_driver_supports_rgba();
 
    if (!string_is_empty(texture_path))
       fill_pathname_join(path, iconpath, texture_path, sizeof(path));

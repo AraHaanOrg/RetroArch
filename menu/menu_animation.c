@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2014-2016 - Jean-André Santoni
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2014-2017 - Jean-André Santoni
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -51,6 +51,12 @@ struct menu_animation
 };
 
 typedef struct menu_animation menu_animation_t;
+
+static menu_animation_t anim;
+static retro_time_t cur_time    = 0;
+static retro_time_t old_time    = 0;
+static float delta_time         = 0.0f;
+static bool animation_is_active = false;
 
 /* from https://github.com/kikito/tween.lua/blob/master/tween.lua */
 
@@ -280,61 +286,18 @@ static float easing_out_in_bounce(float t, float b, float c, float d)
    return easing_in_bounce((t * 2) - d, b + c / 2, c / 2, d);
 }
 
-static int menu_animation_iterate(menu_animation_t *anim,
-      unsigned idx, float dt, unsigned *active_tweens)
-{
-   struct tween *tween = &anim->list[idx];
-
-   if (!tween || !tween->alive)
-      return -1;
-
-   tween->running_since += dt;
-
-   *tween->subject = tween->easing(
-            tween->running_since,
-            tween->initial_value,
-            tween->target_value - tween->initial_value,
-            tween->duration);
-
-   if (tween->running_since >= tween->duration)
-   {
-      *tween->subject = tween->target_value;
-      tween->alive    = false;
-
-      if (idx < anim->first_dead)
-         anim->first_dead = idx;
-
-      if (tween->cb)
-         tween->cb();
-   }
-
-   if (tween->running_since < tween->duration)
-      *active_tweens += 1;
-
-   return 0;
-}
-
 static void menu_animation_ticker_generic(uint64_t idx,
       size_t max_width, size_t *offset, size_t *width)
 {
-   int ticker_period, phase, phase_left_stop;
-   int phase_left_moving, phase_right_stop;
-   int left_offset, right_offset;
+   int ticker_period     = 2 * (*width - max_width) + 4;
+   int phase             = idx % ticker_period;
 
-   *offset = 0;
+   int phase_left_stop   = 2;
+   int phase_left_moving = phase_left_stop + (*width - max_width);
+   int phase_right_stop  = phase_left_moving + 2;
 
-   if (*width <= max_width)
-      return;
-
-   ticker_period     = 2 * (*width - max_width) + 4;
-   phase             = idx % ticker_period;
-
-   phase_left_stop   = 2;
-   phase_left_moving = phase_left_stop + (*width - max_width);
-   phase_right_stop  = phase_left_moving + 2;
-
-   left_offset       = phase - phase_left_stop;
-   right_offset      = (*width - max_width) - (phase - phase_right_stop);
+   int left_offset       = phase - phase_left_stop;
+   int right_offset      = (*width - max_width) - (phase - phase_right_stop);
 
    if (phase < phase_left_stop)
       *offset = 0;
@@ -348,153 +311,129 @@ static void menu_animation_ticker_generic(uint64_t idx,
    *width = max_width;
 }
 
-static void menu_animation_push_internal(menu_animation_t *anim,
-      const struct tween *t)
-{
-   struct tween *target = NULL;
-
-   if (anim->first_dead < anim->size && !anim->list[anim->first_dead].alive)
-      target = &anim->list[anim->first_dead++];
-   else
-   {
-      if (anim->size >= anim->capacity)
-      {
-         anim->capacity++;
-         anim->list = (struct tween*)realloc(anim->list,
-               anim->capacity * sizeof(struct tween));
-      }
-
-      target = &anim->list[anim->size++];
-   }
-
-   *target = *t;
-}
-
-static bool menu_animation_push(menu_animation_t *anim, menu_animation_ctx_entry_t *entry)
+bool menu_animation_push(menu_animation_ctx_entry_t *entry)
 {
    struct tween t;
+   struct tween *target = NULL;
 
-   if (!entry || !entry->subject)
-      return false;
-
-   t.alive         = true;
-   t.duration      = entry->duration;
-   t.running_since = 0;
-   t.initial_value = *entry->subject;
-   t.target_value  = entry->target_value;
-   t.subject       = entry->subject;
-   t.tag           = entry->tag;
-   t.cb            = entry->cb;
-   t.easing        = NULL;
+   t.alive              = true;
+   t.duration           = entry->duration;
+   t.running_since      = 0;
+   t.initial_value      = *entry->subject;
+   t.target_value       = entry->target_value;
+   t.subject            = entry->subject;
+   t.tag                = entry->tag;
+   t.cb                 = entry->cb;
+   t.easing             = NULL;
 
    switch (entry->easing_enum)
    {
       case EASING_LINEAR:
-         t.easing        = &easing_linear;
+         t.easing       = &easing_linear;
          break;
          /* Quad */
       case EASING_IN_QUAD:
-         t.easing        = &easing_in_quad;
+         t.easing       = &easing_in_quad;
          break;
       case EASING_OUT_QUAD:
-         t.easing        = &easing_out_quad;
+         t.easing       = &easing_out_quad;
          break;
       case EASING_IN_OUT_QUAD:
-         t.easing        = &easing_in_out_quad;
+         t.easing       = &easing_in_out_quad;
          break;
       case EASING_OUT_IN_QUAD:
-         t.easing        = &easing_out_in_quad;
+         t.easing       = &easing_out_in_quad;
          break;
          /* Cubic */
       case EASING_IN_CUBIC:
-         t.easing        = &easing_in_cubic;
+         t.easing       = &easing_in_cubic;
          break;
       case EASING_OUT_CUBIC:
-         t.easing        = &easing_out_cubic;
+         t.easing       = &easing_out_cubic;
          break;
       case EASING_IN_OUT_CUBIC:
-         t.easing        = &easing_in_out_cubic;
+         t.easing       = &easing_in_out_cubic;
          break;
       case EASING_OUT_IN_CUBIC:
-         t.easing        = &easing_out_in_cubic;
+         t.easing       = &easing_out_in_cubic;
          break;
          /* Quart */
       case EASING_IN_QUART:
-         t.easing        = &easing_in_quart;
+         t.easing       = &easing_in_quart;
          break;
       case EASING_OUT_QUART:
-         t.easing        = &easing_out_quart;
+         t.easing       = &easing_out_quart;
          break;
       case EASING_IN_OUT_QUART:
-         t.easing        = &easing_in_out_quart;
+         t.easing       = &easing_in_out_quart;
          break;
       case EASING_OUT_IN_QUART:
-         t.easing        = &easing_out_in_quart;
+         t.easing       = &easing_out_in_quart;
          break;
          /* Quint */
       case EASING_IN_QUINT:
-         t.easing        = &easing_in_quint;
+         t.easing       = &easing_in_quint;
          break;
       case EASING_OUT_QUINT:
-         t.easing        = &easing_out_quint;
+         t.easing       = &easing_out_quint;
          break;
       case EASING_IN_OUT_QUINT:
-         t.easing        = &easing_in_out_quint;
+         t.easing       = &easing_in_out_quint;
          break;
       case EASING_OUT_IN_QUINT:
-         t.easing        = &easing_out_in_quint;
+         t.easing       = &easing_out_in_quint;
          break;
          /* Sine */
       case EASING_IN_SINE:
-         t.easing        = &easing_in_sine;
+         t.easing       = &easing_in_sine;
          break;
       case EASING_OUT_SINE:
-         t.easing        = &easing_out_sine;
+         t.easing       = &easing_out_sine;
          break;
       case EASING_IN_OUT_SINE:
-         t.easing        = &easing_in_out_sine;
+         t.easing       = &easing_in_out_sine;
          break;
       case EASING_OUT_IN_SINE:
-         t.easing        = &easing_out_in_sine;
+         t.easing       = &easing_out_in_sine;
          break;
          /* Expo */
       case EASING_IN_EXPO:
-         t.easing        = &easing_in_expo;
+         t.easing       = &easing_in_expo;
          break;
       case EASING_OUT_EXPO:
-         t.easing        = &easing_out_expo;
+         t.easing       = &easing_out_expo;
          break;
       case EASING_IN_OUT_EXPO:
-         t.easing        = &easing_in_out_expo;
+         t.easing       = &easing_in_out_expo;
          break;
       case EASING_OUT_IN_EXPO:
-         t.easing        = &easing_out_in_expo;
+         t.easing       = &easing_out_in_expo;
          break;
          /* Circ */
       case EASING_IN_CIRC:
-         t.easing        = &easing_in_circ;
+         t.easing       = &easing_in_circ;
          break;
       case EASING_OUT_CIRC:
-         t.easing        = &easing_out_circ;
+         t.easing       = &easing_out_circ;
          break;
       case EASING_IN_OUT_CIRC:
-         t.easing        = &easing_in_out_circ;
+         t.easing       = &easing_in_out_circ;
          break;
       case EASING_OUT_IN_CIRC:
-         t.easing        = &easing_out_in_circ;
+         t.easing       = &easing_out_in_circ;
          break;
          /* Bounce */
       case EASING_IN_BOUNCE:
-         t.easing        = &easing_in_bounce;
+         t.easing       = &easing_in_bounce;
          break;
       case EASING_OUT_BOUNCE:
-         t.easing        = &easing_out_bounce;
+         t.easing       = &easing_out_bounce;
          break;
       case EASING_IN_OUT_BOUNCE:
-         t.easing        = &easing_in_out_bounce;
+         t.easing       = &easing_in_out_bounce;
          break;
       case EASING_OUT_IN_BOUNCE:
-         t.easing        = &easing_out_in_bounce;
+         t.easing       = &easing_out_in_bounce;
          break;
       default:
          break;
@@ -504,20 +443,148 @@ static bool menu_animation_push(menu_animation_t *anim, menu_animation_ctx_entry
    if (!t.easing || t.duration == 0 || t.initial_value == t.target_value)
       return false;
 
-   menu_animation_push_internal(anim, &t);
+   if (anim.first_dead < anim.size && !anim.list[anim.first_dead].alive)
+      target = &anim.list[anim.first_dead++];
+   else
+   {
+      if (anim.size >= anim.capacity)
+      {
+         anim.capacity++;
+         anim.list = (struct tween*)realloc(anim.list,
+               anim.capacity * sizeof(struct tween));
+      }
+
+      target = &anim.list[anim.size++];
+   }
+
+   *target = t;
 
    return true;
 }
 
+bool menu_animation_update(float delta_time)
+{
+   unsigned i;
+   unsigned active_tweens = 0;
+
+   for(i = 0; i < anim.size; i++)
+   {
+      struct tween *tween = &anim.list[i];
+      if (!tween || !tween->alive)
+         continue;
+
+      tween->running_since += delta_time;
+
+      *tween->subject = tween->easing(
+            tween->running_since,
+            tween->initial_value,
+            tween->target_value - tween->initial_value,
+            tween->duration);
+
+      if (tween->running_since >= tween->duration)
+      {
+         *tween->subject = tween->target_value;
+         tween->alive    = false;
+
+         if (i < anim.first_dead)
+            anim.first_dead = i;
+
+         if (tween->cb)
+            tween->cb();
+      }
+
+      if (tween->running_since < tween->duration)
+         active_tweens += 1;
+   }
+
+   if (!active_tweens)
+   {
+      anim.size           = 0;
+      anim.first_dead     = 0;
+      return false;
+   }
+
+   animation_is_active = true;
+
+   return true;
+}
+
+bool menu_animation_ticker(const menu_animation_ctx_ticker_t *ticker)
+{
+   size_t str_len = utf8len(ticker->str);
+   size_t offset  = 0;
+
+   if ((size_t)str_len <= ticker->len)
+   {
+      utf8cpy(ticker->s,
+            PATH_MAX_LENGTH,
+            ticker->str,
+            ticker->len);
+      return true;
+   }
+
+   if (!ticker->selected)
+   {
+      utf8cpy(ticker->s, PATH_MAX_LENGTH, ticker->str, ticker->len - 3);
+      strlcat(ticker->s, "...", PATH_MAX_LENGTH);
+      return true;
+   }
+
+   if (str_len > ticker->len)
+      menu_animation_ticker_generic(
+            ticker->idx,
+            ticker->len,
+            &offset,
+            &str_len);
+
+   utf8cpy(
+         ticker->s,
+         PATH_MAX_LENGTH,
+         utf8skip(ticker->str, offset),
+         str_len);
+
+   animation_is_active = true;
+
+   return true;
+}
+
+bool menu_animation_get_ideal_delta_time(menu_animation_ctx_delta_t *delta)
+{
+   if (!delta)
+      return false;
+   delta->ideal = delta->current / IDEAL_DELTA_TIME;
+   return true;
+}
+
+void menu_animation_update_time(bool timedate_enable)
+{
+   static retro_time_t 
+      last_clock_update     = 0;
+
+   cur_time                 = cpu_features_get_time_usec();
+   delta_time               = cur_time - old_time;
+
+   if (delta_time >= IDEAL_DELTA_TIME* 4)
+      delta_time            = IDEAL_DELTA_TIME * 4;
+   if (delta_time <= IDEAL_DELTA_TIME / 4)
+      delta_time            = IDEAL_DELTA_TIME / 4;
+   old_time                 = cur_time;
+
+   if (((cur_time - last_clock_update) > 1000000) 
+         && timedate_enable)
+   {
+      animation_is_active   = true;
+      last_clock_update     = cur_time;
+   }
+}
+
+bool menu_animation_is_active(void)
+{
+   return animation_is_active;
+}
 
 bool menu_animation_ctl(enum menu_animation_ctl_state state, void *data)
 {
-   static menu_animation_t anim;
-   static retro_time_t cur_time    = 0;
-   static retro_time_t old_time    = 0;
-   static float delta_time         = 0.0f;
-   static bool animation_is_active = false;
-
    switch (state)
    {
       case MENU_ANIMATION_CTL_DEINIT:
@@ -538,8 +605,6 @@ bool menu_animation_ctl(enum menu_animation_ctl_state state, void *data)
          old_time                  = 0;
          delta_time                = 0.0f;
          break;
-      case MENU_ANIMATION_CTL_IS_ACTIVE:
-         return animation_is_active;
       case MENU_ANIMATION_CTL_CLEAR_ACTIVE:
          animation_is_active       = false;
          break;
@@ -552,50 +617,6 @@ bool menu_animation_ctl(enum menu_animation_ctl_state state, void *data)
             if (!ptr)
                return false;
             *ptr = delta_time;
-         }
-         break;
-      case MENU_ANIMATION_CTL_UPDATE_TIME:
-         {
-            static retro_time_t last_clock_update = 0;
-            settings_t *settings     = config_get_ptr();
-
-            cur_time                 = cpu_features_get_time_usec();
-            delta_time               = cur_time - old_time;
-
-            if (delta_time >= IDEAL_DELTA_TIME* 4)
-               delta_time = IDEAL_DELTA_TIME * 4;
-            if (delta_time <= IDEAL_DELTA_TIME / 4)
-               delta_time = IDEAL_DELTA_TIME / 4;
-            old_time      = cur_time;
-
-            if (((cur_time - last_clock_update) > 1000000) 
-                  && settings->menu.timedate_enable)
-            {
-               animation_is_active   = true;
-               last_clock_update     = cur_time;
-            }
-         }
-         break;
-      case MENU_ANIMATION_CTL_UPDATE:
-         {
-            unsigned i;
-            unsigned active_tweens = 0;
-            float *dt = (float*)data;
-
-            if (!dt)
-               return false;
-
-            for(i = 0; i < anim.size; i++)
-               menu_animation_iterate(&anim, i, *dt, &active_tweens);
-
-            if (!active_tweens)
-            {
-               anim.size       = 0;
-               anim.first_dead = 0;
-               return false;
-            }
-
-            animation_is_active = true;
          }
          break;
       case MENU_ANIMATION_CTL_KILL_BY_TAG:
@@ -648,55 +669,6 @@ bool menu_animation_ctl(enum menu_animation_ctl_state state, void *data)
             }
          }
          break;
-      case MENU_ANIMATION_CTL_TICKER:
-         {
-            menu_animation_ctx_ticker_t *ticker = (menu_animation_ctx_ticker_t*)
-               data;
-            size_t           str_len = utf8len(ticker->str);
-            size_t           offset  = 0;
-
-            if ((size_t)str_len <= ticker->len)
-            {
-               utf8cpy(ticker->s,
-                     PATH_MAX_LENGTH,
-                     ticker->str,
-                     ticker->len);
-               return true;
-            }
-
-            if (!ticker->selected)
-            {
-               utf8cpy(ticker->s, PATH_MAX_LENGTH, ticker->str, ticker->len - 3);
-               strlcat(ticker->s, "...", PATH_MAX_LENGTH);
-               return true;
-            }
-
-            menu_animation_ticker_generic(
-                  ticker->idx,
-                  ticker->len,
-                  &offset,
-                  &str_len);
-
-            utf8cpy(
-                  ticker->s,
-                  PATH_MAX_LENGTH,
-                  utf8skip(ticker->str, offset),
-                  str_len);
-
-            animation_is_active = true;
-         }
-         break;
-      case MENU_ANIMATION_CTL_IDEAL_DELTA_TIME_GET:
-         {
-            menu_animation_ctx_delta_t *delta = 
-               (menu_animation_ctx_delta_t*)data;
-            if (!delta)
-               return false;
-            delta->ideal = delta->current / IDEAL_DELTA_TIME;
-         }
-         break;
-      case MENU_ANIMATION_CTL_PUSH:
-         return menu_animation_push(&anim, (menu_animation_ctx_entry_t *)data);
       case MENU_ANIMATION_CTL_NONE:
       default:
          break;

@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -26,6 +26,7 @@
 #include "../../input/input_config.h"
 
 #include "../../configuration.h"
+#include "../../performance_counters.h"
 
 #define MENU_MAX_BUTTONS 219
 #define MENU_MAX_AXES    32
@@ -51,7 +52,8 @@ struct menu_bind_state
 {
    struct retro_keybind *target;
    /* For keyboard binding. */
-   int64_t timeout_end;
+
+   rarch_timer_t timer;
    unsigned begin;
    unsigned last;
    unsigned user;
@@ -61,7 +63,7 @@ struct menu_bind_state
 };
 
 static unsigned               menu_bind_port   = 0;
-static struct menu_bind_state menu_input_binds;
+static struct menu_bind_state menu_input_binds = {0};
 
 static bool menu_input_key_bind_custom_bind_keyboard_cb(
       void *data, unsigned code)
@@ -71,8 +73,8 @@ static bool menu_input_key_bind_custom_bind_keyboard_cb(
    menu_input_binds.target->key = (enum retro_key)code;
    menu_input_binds.begin++;
    menu_input_binds.target++;
-   menu_input_binds.timeout_end = cpu_features_get_time_usec() +
-      settings->input.bind_timeout * 1000000;
+   
+   rarch_timer_begin_new_time(&menu_input_binds.timer, settings->input.bind_timeout);
 
    return (menu_input_binds.begin <= menu_input_binds.last);
 }
@@ -207,6 +209,7 @@ static void menu_input_key_bind_poll_bind_state(
       unsigned port,
       bool timed_out)
 {
+   rarch_joypad_info_t joypad_info;
    const input_device_driver_t *joypad     =
       input_driver_get_joypad_driver();
    const input_device_driver_t *sec_joypad =
@@ -216,7 +219,13 @@ static void menu_input_key_bind_poll_bind_state(
       return;
 
    memset(state->state, 0, sizeof(state->state));
-   state->skip = timed_out || current_input->input_state(current_input_data, NULL,
+
+   joypad_info.joy_idx        = 0;
+   joypad_info.auto_binds     = NULL;
+   joypad_info.axis_threshold = 0.0f;
+
+   state->skip = timed_out || current_input->input_state(current_input_data, joypad_info,
+         NULL,
          0, RETRO_DEVICE_KEYBOARD, 0, RETROK_RETURN);
 
    menu_input_key_bind_poll_bind_state_internal(
@@ -251,8 +260,7 @@ bool menu_input_key_bind_set_mode(
    menu_input_key_bind_poll_bind_state(
          &menu_input_binds, menu_bind_port, false);
 
-   menu_input_binds.timeout_end   = cpu_features_get_time_usec() +
-      settings->input.bind_timeout * 1000000;
+   rarch_timer_begin_new_time(&menu_input_binds.timer, settings->input.bind_timeout);
 
    keys.userdata = menu;
    keys.cb       = menu_input_key_bind_custom_bind_keyboard_cb;
@@ -376,21 +384,19 @@ bool menu_input_key_bind_iterate(menu_input_ctx_bind_t *bind)
    struct menu_bind_state binds;
    bool               timed_out = false;
    settings_t *settings         = config_get_ptr();
-   int64_t current              = cpu_features_get_time_usec();
-   int timeout                  =
-      (menu_input_binds.timeout_end - current) / 1000000;
+
+   rarch_timer_tick(&menu_input_binds.timer);
 
    if (!bind)
       return false;
 
-   if (timeout <= 0)
+   if (rarch_timer_has_expired(&menu_input_binds.timer))
    {
       input_driver_keyboard_mapping_set_block(false);
 
       menu_input_binds.begin++;
       menu_input_binds.target++;
-      menu_input_binds.timeout_end = cpu_features_get_time_usec() +
-         settings->input.bind_timeout * 1000000;
+      rarch_timer_begin_new_time(&menu_input_binds.timer, settings->input.bind_timeout);
       timed_out = true;
    }
 
@@ -398,7 +404,7 @@ bool menu_input_key_bind_iterate(menu_input_ctx_bind_t *bind)
          "[%s]\npress keyboard or joypad\n(timeout %d %s)",
          input_config_bind_map_get_desc(
             menu_input_binds.begin - MENU_SETTINGS_BIND_BEGIN),
-         timeout,
+         rarch_timer_get_timeout(&menu_input_binds.timer),
          msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SECONDS));
 
    /* binds.begin is updated in keyboard_press callback. */
@@ -436,8 +442,7 @@ bool menu_input_key_bind_iterate(menu_input_ctx_bind_t *bind)
       }
 
       binds.target++;
-      binds.timeout_end = cpu_features_get_time_usec() +
-         settings->input.bind_timeout * 1000000;
+      rarch_timer_begin_new_time(&binds.timer, settings->input.bind_timeout);
    }
    menu_input_binds = binds;
 

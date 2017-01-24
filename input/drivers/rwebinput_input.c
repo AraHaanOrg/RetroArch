@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2015 - Michael Lelli
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -19,10 +20,11 @@
 
 #include <boolean.h>
 
-#include "../input_joypad_driver.h"
-#include "../input_keyboard.h"
 #include "../input_config.h"
+#include "../input_keyboard.h"
 #include "../input_keymaps.h"
+#include "../input_driver.h"
+#include "../input_joypad_driver.h"
 
 #include "../../tasks/tasks_internal.h"
 #include "../../configuration.h"
@@ -47,7 +49,7 @@ typedef struct rwebinput_input
    int context;
 } rwebinput_input_t;
 
-static void *rwebinput_input_init(void)
+static void *rwebinput_input_init(const char *joypad_driver)
 {
    rwebinput_input_t *rwebinput = (rwebinput_input_t*)calloc(1, sizeof(*rwebinput));
    if (!rwebinput)
@@ -142,7 +144,9 @@ static int16_t rwebinput_analog_pressed(rwebinput_input_t *rwebinput,
    return pressed_plus + pressed_minus;
 }
 
-static int16_t rwebinput_input_state(void *data, const struct retro_keybind **binds,
+static int16_t rwebinput_input_state(void *data,
+      rarch_joypad_info_t joypad_info,
+      const struct retro_keybind **binds,
       unsigned port, unsigned device, unsigned idx, unsigned id)
 {
    rwebinput_input_t *rwebinput  = (rwebinput_input_t*)data;
@@ -150,15 +154,11 @@ static int16_t rwebinput_input_state(void *data, const struct retro_keybind **bi
    switch (device)
    {
       case RETRO_DEVICE_JOYPAD:
-         if (binds[port] && binds[port][id].valid)
-            return rwebinput_is_pressed(rwebinput, binds[port], id);
-         break;
+         return rwebinput_is_pressed(rwebinput, binds[port], id);
       case RETRO_DEVICE_ANALOG:
          return rwebinput_analog_pressed(rwebinput, binds[port], idx, id);
-
       case RETRO_DEVICE_KEYBOARD:
          return rwebinput_key_pressed(rwebinput, id);
-
       case RETRO_DEVICE_MOUSE:
          return rwebinput_mouse_state(rwebinput, id);
    }

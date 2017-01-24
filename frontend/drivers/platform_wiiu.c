@@ -1,5 +1,6 @@
 /* RetroArch - A frontend for libretro.
  *  Copyright (C) 2014-2016 - Ali Bouhlel
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  * RetroArch is free software: you can redistribute it and/or modify it under the terms
  * of the GNU General Public License as published by the Free Software Found-
@@ -25,7 +26,6 @@
 
 #include "../frontend_driver.h"
 #include "../frontend.h"
-#include "../../configuration.h"
 #include "../../verbosity.h"
 #include "../../defaults.h"
 #include "../../paths.h"
@@ -36,7 +36,7 @@
 
 #include "tasks/tasks_internal.h"
 #include "runloop.h"
-#include <nsysnet/socket.h>
+#include <sys/socket.h>
 #include "fs/fs_utils.h"
 #include "fs/sd_fat_devoptab.h"
 #include "system/dynamic.h"
@@ -45,10 +45,15 @@
 #include "system/exception.h"
 #include <sys/iosupport.h>
 
-#include <coreinit/foreground.h>
-#include <proc_ui/procui.h>
-#include <vpad/input.h>
-#include <sysapp/launch.h>
+#include <wiiu/os/foreground.h>
+#include <wiiu/procui.h>
+#include <wiiu/sysapp.h>
+#include <wiiu/ios.h>
+#include <wiiu/vpad.h>
+#include <wiiu/kpad.h>
+
+#include <fat.h>
+#include <iosuhax.h>
 
 #include "wiiu_dbg.h"
 
@@ -58,6 +63,7 @@
 
 //#define WIIU_SD_PATH "/vol/external01/"
 #define WIIU_SD_PATH "sd:/"
+#define WIIU_USB_PATH "usb:/"
 
 static enum frontend_fork wiiu_fork_mode = FRONTEND_FORK_NONE;
 static const char* elf_path_cst = WIIU_SD_PATH "retroarch/retroarch.elf";
@@ -138,8 +144,15 @@ static int frontend_wiiu_parse_drive_list(void *data)
    if (!list)
       return -1;
 
-   menu_entries_append_enum(list,
-         WIIU_SD_PATH, "", MSG_UNKNOWN, FILE_TYPE_DIRECTORY, 0, 0);
+   menu_entries_append_enum(list, WIIU_SD_PATH,
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
+
+   menu_entries_append_enum(list, WIIU_USB_PATH,
+         msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
+         MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR,
+         MENU_SETTING_ACTION, 0, 0);
 
    return 0;
 }
@@ -201,7 +214,7 @@ void log_deinit(void)
         log_socket = -1;
     }
 }
-static int log_write(struct _reent *r, int fd, const char *ptr, size_t len)
+static ssize_t log_write(struct _reent *r, void* fd, const char *ptr, size_t len)
 {
    if(log_socket < 0)
        return len;
@@ -267,6 +280,9 @@ int main(int argc, char **argv)
    devoptab_list[STD_ERR] = &dotab_stdout;
 #endif
    VPADInit();
+   WPADEnableURCC(true);
+   WPADEnableWiiRemote(true);
+   KPADInit();
 
    verbosity_enable();
    DEBUG_VAR(argc);
@@ -338,18 +354,80 @@ void __fini(void)
       (*ctor++)();
 }
 
+/* libiosuhax related */
+
+//just to be able to call async
+void someFunc(void *arg)
+{
+    (void)arg;
+}
+
+static int mcp_hook_fd = -1;
+int MCPHookOpen()
+{
+    //take over mcp thread
+    mcp_hook_fd = IOS_Open("/dev/mcp", 0);
+    if(mcp_hook_fd < 0)
+        return -1;
+    IOS_IoctlAsync(mcp_hook_fd, 0x62, (void*)0, 0, (void*)0, 0, someFunc, (void*)0);
+    //let wupserver start up
+    retro_sleep(1000);
+    if(IOSUHAX_Open("/dev/mcp") < 0)
+    {
+        IOS_Close(mcp_hook_fd);
+        mcp_hook_fd = -1;
+        return -1;
+    }
+    return 0;
+}
+
+void MCPHookClose()
+{
+    if(mcp_hook_fd < 0)
+        return;
+    //close down wupserver, return control to mcp
+    IOSUHAX_Close();
+    //wait for mcp to return
+    retro_sleep(1000);
+    IOS_Close(mcp_hook_fd);
+    mcp_hook_fd = -1;
+}
+
 /* HBL elf entry point */
 int __entry_menu(int argc, char **argv)
 {
    InitFunctionPointers();
    memoryInitialize();
-   mount_sd_fat("sd");
+
+   int iosuhaxMount = 0;
+   int res = IOSUHAX_Open(NULL);
+   if(res < 0)
+      res = MCPHookOpen();
+
+   if(res < 0)
+      mount_sd_fat("sd");
+   else
+   {
+      iosuhaxMount = 1;
+      fatInitDefault();
+   }
 
    __init();
    int ret = main(argc, argv);
    __fini();
 
-   unmount_sd_fat("sd");
+   if(iosuhaxMount)
+   {
+      fatUnmount("sd:");
+      fatUnmount("usb:");
+      if(mcp_hook_fd >= 0)
+         MCPHookClose();
+      else
+         IOSUHAX_Close();
+   }
+   else
+      unmount_sd_fat("sd");
+
    memoryRelease();
    return ret;
 }
@@ -359,13 +437,36 @@ __attribute__((noreturn))
 void _start(int argc, char **argv)
 {
    memoryInitialize();
-   mount_sd_fat("sd");
+
+   int iosuhaxMount = 0;
+   int res = IOSUHAX_Open(NULL);
+   if(res < 0)
+      res = MCPHookOpen();
+
+   if(res < 0)
+      mount_sd_fat("sd");
+   else
+   {
+      iosuhaxMount = 1;
+      fatInitDefault();
+   }
 
    __init();
    int ret = main(argc, argv);
    __fini();
 
-   unmount_sd_fat("sd");
+   if(iosuhaxMount)
+   {
+      fatUnmount("sd:");
+      fatUnmount("usb:");
+      if(mcp_hook_fd >= 0)
+         MCPHookClose();
+      else
+         IOSUHAX_Close();
+   }
+   else
+      unmount_sd_fat("sd");
+
    memoryRelease();
    SYSRelaunchTitle(argc, argv);
    exit(ret);

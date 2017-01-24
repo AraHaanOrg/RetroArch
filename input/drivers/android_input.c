@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *  Copyright (C) 2012-2015 - Michael Lelli
  *  Copyright (C) 2013-2014 - Steven Crowe
  *
@@ -33,8 +33,10 @@
 #include "../../menu/menu_display.h"
 #endif
 
-#include "../../frontend/drivers/platform_linux.h"
 #include "../input_config.h"
+#include "../input_driver.h"
+
+#include "../../frontend/drivers/platform_linux.h"
 #include "../../gfx/video_driver.h"
 #include "../input_joypad_driver.h"
 #include "../drivers_keyboard/keyboard_event_android.h"
@@ -456,10 +458,9 @@ static bool android_input_init_handle(void)
    return true;
 }
 
-static void *android_input_init(void)
+static void *android_input_init(const char *joypad_driver)
 {
    int32_t sdk;
-   settings_t *settings = config_get_ptr();
    struct android_app *android_app = (struct android_app*)g_android;
    android_input_t *android = (android_input_t*)
       calloc(1, sizeof(*android));
@@ -469,8 +470,7 @@ static void *android_input_init(void)
 
    android->thread.pads_connected = 0;
    android->copy.pads_connected = 0;
-   android->joypad         = input_joypad_init_driver(
-         settings->input.joypad_driver, android);
+   android->joypad         = input_joypad_init_driver(joypad_driver, android);
  
    input_keymaps_init_keyboard_lut(rarch_key_map_android);
  
@@ -503,7 +503,8 @@ static INLINE int android_input_poll_event_type_motion(
    size_t motion_ptr;
    bool keyup;
 
-   if (source & ~(AINPUT_SOURCE_TOUCHSCREEN | AINPUT_SOURCE_MOUSE))
+   // Only handle events from a touchscreen or mouse
+   if (!(source & (AINPUT_SOURCE_TOUCHSCREEN | AINPUT_SOURCE_MOUSE)))
       return 1;
 
    getaction  = AMotionEvent_getAction(event);
@@ -644,7 +645,6 @@ static void handle_hotplug(android_input_data_t *android_data,
    char name_buf[256];
    int vendorId                 = 0;
    int productId                = 0;
-   settings_t         *settings = config_get_ptr();
 
    device_name[0] = device_model[0] = name_buf[0] = '\0';
 
@@ -889,28 +889,18 @@ static void handle_hotplug(android_input_data_t *android_data,
    if (*port < 0)
       *port = android_data->pads_connected;
 
-   if (settings->input.autodetect_enable)
-   {
-      autoconfig_params_t params   = {{0}};
-
-      RARCH_LOG("Pads Connected: %d Port: %d\n %s VID/PID: %d/%d\n",
-            android_data->pads_connected, *port, name_buf,
-            params.vid, params.pid);
-
-      strlcpy(params.name, name_buf, sizeof(params.name));
-
-      params.idx                 = *port;
-      params.vid                 = vendorId;
-      params.pid                 = productId;
-      settings->input.pid[*port] = params.pid;
-      settings->input.vid[*port] = params.vid;
-
-      strlcpy(params.driver, android_joypad.ident, sizeof(params.driver));
-      input_autoconfigure_connect(&params);
-   }
+   if (!input_autoconfigure_connect(
+         name_buf,
+         NULL,
+         android_joypad.ident,
+         *port,
+         vendorId,
+         productId))
+      input_config_set_device_name(*port, name_buf);
 
    if (!string_is_empty(name_buf))
    {
+      settings_t         *settings = config_get_ptr();
       strlcpy(settings->input.device_names[*port],
             name_buf, sizeof(settings->input.device_names[*port]));
    }
@@ -1028,14 +1018,20 @@ static void android_input_poll_memcpy(void *data)
 
 static bool android_input_key_pressed(void *data, int key)		
 {		
+   rarch_joypad_info_t joypad_info;
    android_input_t *android = (android_input_t*)data;		
    settings_t *settings     = config_get_ptr();		
 
-   if(settings->input.binds[0][key].valid && android_keyboard_port_input_pressed(settings->input.binds[0],key))		
+   if(       settings->input.binds[0][key].valid 
+         && android_keyboard_port_input_pressed(settings->input.binds[0],key))		
       return true;		
 
+   joypad_info.joy_idx        = 0;
+   joypad_info.auto_binds     = settings->input.autoconf_binds[0];
+   joypad_info.axis_threshold = settings->input.axis_threshold;
+
    if (settings->input.binds[0][key].valid &&		
-         input_joypad_pressed(android->joypad,		
+         input_joypad_pressed(android->joypad, joypad_info,
             0, settings->input.binds[0], key))		
       return true;		
 
@@ -1113,24 +1109,24 @@ bool android_run_events(void *data)
 }
 
 static int16_t android_input_state(void *data,
+      rarch_joypad_info_t joypad_info,
       const struct retro_keybind **binds, unsigned port, unsigned device,
       unsigned idx, unsigned id)
 {
-   settings_t *settings = config_get_ptr();
-   android_input_t *android = (android_input_t*)data;
+   settings_t *settings               = config_get_ptr();
+   android_input_t *android           = (android_input_t*)data;
    android_input_data_t *android_data = (android_input_data_t*)&android->copy;
 
    switch (device)
    {
       case RETRO_DEVICE_JOYPAD:
-         if (binds[port] && binds[port][id].valid)
-            return input_joypad_pressed(android->joypad, port, binds[port], id) ||
-               android_keyboard_port_input_pressed(binds[port],id);
-         break;
+         return input_joypad_pressed(android->joypad, joypad_info,
+               port, binds[port], id) ||
+            android_keyboard_port_input_pressed(binds[port],id);
       case RETRO_DEVICE_ANALOG:
          if (binds[port])
-            return input_joypad_analog(android->joypad, port, idx, id,
-                  binds[port]);
+            return input_joypad_analog(android->joypad, joypad_info,
+                  port, idx, id, binds[port]);
          break;
       case RETRO_DEVICE_POINTER:
          switch (id)

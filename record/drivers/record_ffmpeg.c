@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -14,12 +14,9 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 
 #include <retro_assert.h>
 #include <compat/msvc.h>
@@ -30,8 +27,9 @@
 #include <gfx/scaler/scaler.h>
 #include <gfx/video_frame.h>
 #include <file/config_file.h>
-#include <conversion/float_to_s16.h>
-#include <conversion/s16_to_float.h>
+#include <audio/audio_resampler.h>
+#include <audio/conversion/float_to_s16.h>
+#include <audio/conversion/s16_to_float.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../../config.h"
@@ -68,7 +66,6 @@ extern "C" {
 
 #include "../../configuration.h"
 #include "../../gfx/video_driver.h"
-#include "../../audio/audio_resampler_driver.h"
 #include "../../verbosity.h"
 
 
@@ -144,7 +141,7 @@ struct ff_audio_info
     * Could use libswresample, but it doesn't support floating point ratios.
     * Use either S16 or (planar) float for simplicity.
     */
-   const rarch_resampler_t *resampler;
+   const retro_resampler_t *resampler;
    void *resampler_data;
 
    bool use_float;
@@ -183,7 +180,7 @@ struct ff_config_param
    unsigned threads;
    unsigned frame_drop_ratio;
    unsigned sample_rate;
-   unsigned scale_factor;
+   float scale_factor;
 
    bool audio_enable;
    /* Keep same naming conventions as libavcodec. */
@@ -337,7 +334,7 @@ static bool ffmpeg_init_audio(ffmpeg_t *handle)
       audio->codec->sample_rate = params->sample_rate;
       audio->codec->time_base = av_d2q(1.0 / params->sample_rate, 1000000);
 
-      rarch_resampler_realloc(&audio->resampler_data,
+      retro_resampler_realloc(&audio->resampler_data,
             &audio->resampler,
             settings->audio.resampler,
             audio->ratio);
@@ -477,8 +474,8 @@ static bool ffmpeg_init_video(ffmpeg_t *handle)
    /* Useful to set scale_factor to 2 for chroma subsampled formats to
     * maintain full chroma resolution. (Or just use 4:4:4 or RGB ...)
     */
-   param->out_width  *= params->scale_factor;
-   param->out_height *= params->scale_factor;
+   param->out_width  = (float)param->out_width  * params->scale_factor;
+   param->out_height = (float)param->out_height * params->scale_factor;
 
    video->codec->codec_type          = AVMEDIA_TYPE_VIDEO;
    video->codec->width               = param->out_width;
@@ -567,7 +564,7 @@ static bool ffmpeg_init_config(struct ff_config_param *params,
       params->audio_enable = true;
 
    config_get_uint(params->conf, "sample_rate", &params->sample_rate);
-   config_get_uint(params->conf, "scale_factor", &params->scale_factor);
+   config_get_float(params->conf, "scale_factor", &params->scale_factor);
 
    params->audio_qscale = config_get_int(params->conf, "audio_global_quality",
          &params->audio_global_quality);

@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -44,18 +44,14 @@ static const char *xdk_joypad_name(unsigned pad)
 
 static void xdk_joypad_autodetect_add(unsigned autoconf_pad)
 {
-   autoconfig_params_t params = {{0}};
-   settings_t *settings       = config_get_ptr();
-
-   strlcpy(settings->input.device_names[autoconf_pad],
-         "XInput Controller",
-         sizeof(settings->input.device_names[autoconf_pad]));
-
-   /* TODO - implement VID/PID? */
-   params.idx = autoconf_pad;
-   strlcpy(params.name, xdk_joypad_name(autoconf_pad), sizeof(params.name));
-   strlcpy(params.driver, xdk_joypad.ident, sizeof(params.driver));
-   input_autoconfigure_connect(&params);
+   if (!input_autoconfigure_connect(
+         xdk_joypad_name(autoconf_pad),
+         NULL,
+         xdk_joypad.ident,
+         autoconf_pad,
+         0,
+         0))
+      input_config_set_device_name(autoconf_pad, xdk_joypad_name(autoconf_pad));
 }
 
 static bool xdk_joypad_init(void *data)

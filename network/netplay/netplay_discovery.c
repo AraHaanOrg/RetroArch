@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C)      2016 - Gregor Richards
+ *  Copyright (C) 2016-2017 - Gregor Richards
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -32,6 +32,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <compat/strl.h>
@@ -62,8 +63,12 @@ struct ad_packet
 bool netplay_lan_ad_client(void);
 
 /* LAN discovery sockets */
-static int lan_ad_server_fd = -1;
-static int lan_ad_client_fd = -1;
+static int lan_ad_server_fd            = -1;
+static int lan_ad_client_fd            = -1;
+
+int netplay_room_count                 = 0;
+
+struct netplay_room *netplay_room_list = NULL;
 
 /* Packet buffer for advertisement and responses */
 static struct ad_packet ad_packet_buffer;
@@ -141,7 +146,7 @@ bool netplay_discovery_driver_ctl(enum rarch_netplay_discovery_ctl_state state, 
          /* And send it off */
          if (sendto(lan_ad_client_fd, (const char *) &ad_packet_buffer,
             2*sizeof(uint32_t), 0, addr->ai_addr, addr->ai_addrlen) <
-            2*sizeof(uint32_t))
+            (ssize_t) (2*sizeof(uint32_t)))
             RARCH_WARN("Failed to send netplay discovery response.\n");
 
          freeaddrinfo_retro(addr);
@@ -191,6 +196,11 @@ error:
    return false;
 }
 
+/**
+ * netplay_lan_ad_server
+ *
+ * Respond to any LAN ad queries that the netplay server has received.
+ */
 bool netplay_lan_ad_server(netplay_t *netplay)
 {
    fd_set fds;

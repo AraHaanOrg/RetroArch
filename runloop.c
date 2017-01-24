@@ -87,9 +87,8 @@
 #define DEFAULT_EXT ""
 #endif
 
-#ifdef HAVE_MENU
-#define runloop_cmd_menu_press(current_input, old_input, trigger_input)   (BIT64_GET(trigger_input, RARCH_MENU_TOGGLE) || runloop_cmd_get_state_menu_toggle_button_combo(settings, current_input, old_input, trigger_input))
-#endif
+#define runloop_cmd_triggered(trigger_input, id) (BIT64_GET(trigger_input, id))
+#define runloop_cmd_pressed(old_input, id)       (BIT64_GET(old_input, id))
 
 enum  runloop_state
 {
@@ -146,10 +145,6 @@ void runloop_msg_queue_push(const char *msg,
       bool flush)
 {
    runloop_ctx_msg_info_t msg_info;
-   settings_t *settings = config_get_ptr();
-
-   if (!settings || !settings->video.font_enable)
-      return;
 
 #ifdef HAVE_THREADS
    slock_lock(_runloop_msg_queue_lock);
@@ -182,55 +177,6 @@ void runloop_msg_queue_push(const char *msg,
 #endif
 }
 
-#ifdef HAVE_MENU
-static bool runloop_cmd_get_state_menu_toggle_button_combo(
-      settings_t *settings,
-      uint64_t current_input, uint64_t old_input,
-      uint64_t trigger_input)
-{
-   switch (settings->input.menu_toggle_gamepad_combo)
-   {
-      case INPUT_TOGGLE_NONE:
-         return false;
-      case INPUT_TOGGLE_DOWN_Y_L_R:
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_DOWN))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_Y))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_L))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_R))
-            return false;
-         break;
-      case INPUT_TOGGLE_L3_R3:
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_L3))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_R3))
-            return false;
-         break;
-      case INPUT_TOGGLE_L1_R1_START_SELECT:
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_START))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_SELECT))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_L))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_R))
-            return false;
-         break;
-      case INPUT_TOGGLE_START_SELECT:
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_START))
-            return false;
-         if (!BIT64_GET(current_input, RETRO_DEVICE_ID_JOYPAD_SELECT))
-            return false;
-         break;
-   }
-
-   input_driver_set_flushing_input();
-   return true;
-}
-#endif
-
 /**
  * rarch_game_specific_options:
  *
@@ -258,6 +204,27 @@ static bool rarch_game_specific_options(char **output)
    return true;
 }
 
+void runloop_get_status(bool *is_paused, bool *is_idle, 
+      bool *is_slowmotion)
+{
+   *is_paused     = runloop_paused;
+   *is_idle       = runloop_idle;
+   *is_slowmotion = runloop_slowmotion;
+}
+
+bool runloop_msg_queue_pull(const char **ret)
+{
+   if (!ret)
+      return false;
+#ifdef HAVE_THREADS
+   slock_lock(_runloop_msg_queue_lock);
+#endif
+   *ret = msg_queue_pull(runloop_msg_queue);
+#ifdef HAVE_THREADS
+   slock_unlock(_runloop_msg_queue_lock);
+#endif
+   return true;
+}
 
 bool runloop_ctl(enum runloop_ctl_state state, void *data)
 {
@@ -348,12 +315,6 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
          break;
       case RUNLOOP_CTL_IS_MISSING_BIOS:
          return runloop_missing_bios;
-      case RUNLOOP_CTL_SET_GAME_OPTIONS_ACTIVE:
-         runloop_game_options_active = true;
-         break;
-      case RUNLOOP_CTL_UNSET_GAME_OPTIONS_ACTIVE:
-         runloop_game_options_active = false;
-         break;
       case RUNLOOP_CTL_IS_GAME_OPTIONS_ACTIVE:
          return runloop_game_options_active;
       case RUNLOOP_CTL_SET_FRAME_LIMIT:
@@ -490,8 +451,6 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
             runloop_idle = *ptr;
          }
          break;
-      case RUNLOOP_CTL_IS_SLOWMOTION:
-         return runloop_slowmotion;
       case RUNLOOP_CTL_SET_SLOWMOTION:
          {
             bool *ptr = (bool*)data;
@@ -510,25 +469,6 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
          break;
       case RUNLOOP_CTL_IS_PAUSED:
          return runloop_paused;
-      case RUNLOOP_CTL_MSG_QUEUE_PULL:
-#ifdef HAVE_THREADS
-         slock_lock(_runloop_msg_queue_lock);
-#endif
-         {
-            const char **ret = (const char**)data;
-            if (!ret)
-            {
-#ifdef HAVE_THREADS
-               slock_unlock(_runloop_msg_queue_lock);
-#endif
-               return false;
-            }
-            *ret = msg_queue_pull(runloop_msg_queue);
-         }
-#ifdef HAVE_THREADS
-         slock_unlock(_runloop_msg_queue_lock);
-#endif
-         break;
       case RUNLOOP_CTL_MSG_QUEUE_DEINIT:
          if (!runloop_msg_queue)
             return true;
@@ -568,8 +508,8 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
 #else
             bool threaded_enable = false;
 #endif
-            task_queue_ctl(TASK_QUEUE_CTL_DEINIT, NULL);
-            task_queue_ctl(TASK_QUEUE_CTL_INIT, &threaded_enable);
+            task_queue_deinit();
+            task_queue_init(threaded_enable, runloop_msg_queue_push);
          }
          break;
       case RUNLOOP_CTL_SET_CORE_SHUTDOWN:
@@ -584,7 +524,7 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
          runloop_exec = true;
          break;
       case RUNLOOP_CTL_DATA_DEINIT:
-         task_queue_ctl(TASK_QUEUE_CTL_DEINIT, NULL);
+         task_queue_deinit();
          break;
       case RUNLOOP_CTL_IS_CORE_OPTION_UPDATED:
          if (!runloop_core_options)
@@ -636,8 +576,8 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
 
             if(ret)
             {
-               runloop_ctl(RUNLOOP_CTL_SET_GAME_OPTIONS_ACTIVE, NULL);
-               runloop_core_options =
+               runloop_game_options_active = true;
+               runloop_core_options        =
                   core_option_manager_new(game_options_path, vars);
                free(game_options_path);
             }
@@ -658,7 +598,7 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
                   options_path = buf;
                }
 
-               runloop_ctl(RUNLOOP_CTL_UNSET_GAME_OPTIONS_ACTIVE, NULL);
+               runloop_game_options_active = false;
 
                if (!string_is_empty(options_path))
                   runloop_core_options =
@@ -688,8 +628,8 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
             else
                core_option_manager_flush(runloop_core_options);
 
-            if (runloop_ctl(RUNLOOP_CTL_IS_GAME_OPTIONS_ACTIVE, NULL))
-               runloop_ctl(RUNLOOP_CTL_UNSET_GAME_OPTIONS_ACTIVE, NULL);
+            if (runloop_game_options_active)
+               runloop_game_options_active = false;
 
             runloop_ctl(RUNLOOP_CTL_CORE_OPTIONS_FREE, NULL);
          }
@@ -738,7 +678,7 @@ bool runloop_ctl(enum runloop_ctl_state state, void *data)
  * d) Video driver no longer alive.
  * e) End of BSV movie and BSV EOF exit is true. (TODO/FIXME - explain better)
  */
-#define time_to_exit(quit_key_pressed) (runloop_shutdown_initiated || quit_key_pressed || !video_driver_is_alive() || bsv_movie_ctl(BSV_MOVIE_CTL_END_EOF, NULL) || (runloop_max_frames && (*(video_driver_get_frame_count_ptr()) >= runloop_max_frames)) || runloop_exec)
+#define time_to_exit(quit_key_pressed) (runloop_shutdown_initiated || quit_key_pressed || !video_driver_is_alive() || bsv_movie_ctl(BSV_MOVIE_CTL_END_EOF, NULL) || (runloop_max_frames && (video_driver_get_frame_count() >= runloop_max_frames)) || runloop_exec)
 
 #define runloop_check_cheevos() (settings->cheevos.enable && cheevos_loaded && (!cheats_are_enabled && !cheats_were_enabled))
 
@@ -764,11 +704,7 @@ static enum runloop_state runloop_check_state(
 
    if (runloop_cmd_triggered(trigger_input, RARCH_FULLSCREEN_TOGGLE_KEY))
    {
-      bool fullscreen_toggled = !runloop_paused;
-#ifdef HAVE_MENU
-      fullscreen_toggled = fullscreen_toggled ||
-         menu_driver_ctl(RARCH_MENU_CTL_IS_ALIVE, NULL);
-#endif
+      bool fullscreen_toggled = !runloop_paused || menu_driver_is_alive();
 
       if (fullscreen_toggled)
          command_event(CMD_EVENT_FULLSCREEN_TOGGLE, NULL);
@@ -819,7 +755,7 @@ static enum runloop_state runloop_check_state(
    }
 
 #ifdef HAVE_MENU
-   if (menu_driver_ctl(RARCH_MENU_CTL_IS_ALIVE, NULL))
+   if (menu_driver_is_alive())
    {
       menu_ctx_iterate_t iter;
       core_poll();
@@ -836,7 +772,7 @@ static enum runloop_state runloop_check_state(
             rarch_ctl(RARCH_CTL_MENU_RUNNING_FINISHED, NULL);
 
          if (focused || !runloop_idle)
-            menu_driver_ctl(RARCH_MENU_CTL_RENDER, NULL);
+            menu_driver_render(runloop_idle);
 
          if (!focused)
             return RUNLOOP_STATE_SLEEP;
@@ -851,26 +787,26 @@ static enum runloop_state runloop_check_state(
       return RUNLOOP_STATE_SLEEP;
 
    if (runloop_cmd_triggered(trigger_input, RARCH_GAME_FOCUS_TOGGLE))
-      command_event(CMD_EVENT_GAME_FOCUS_TOGGLE, NULL);
+      command_event(CMD_EVENT_GAME_FOCUS_TOGGLE, (void*)(intptr_t)0);
 
 #ifdef HAVE_MENU
-   if (menu_event_keyboard_is_set(RETROK_F1) == 1)
+   if (menu_event_kb_is_set(RETROK_F1) == 1)
    {
-      if (menu_driver_ctl(RARCH_MENU_CTL_IS_ALIVE, NULL))
+      if (menu_driver_is_alive())
       {
          if (rarch_ctl(RARCH_CTL_IS_INITED, NULL) &&
                !rarch_ctl(RARCH_CTL_IS_DUMMY_CORE, NULL))
          {
             rarch_ctl(RARCH_CTL_MENU_RUNNING_FINISHED, NULL);
-            menu_event_keyboard_set(false, RETROK_F1);
+            menu_event_kb_set(false, RETROK_F1);
          }
       }
    }
-   else if ((!menu_event_keyboard_is_set(RETROK_F1) && 
-            runloop_cmd_menu_press(current_input, old_input, trigger_input)) ||
+   else if ((!menu_event_kb_is_set(RETROK_F1) && 
+            runloop_cmd_triggered(trigger_input, RARCH_MENU_TOGGLE)) ||
          rarch_ctl(RARCH_CTL_IS_DUMMY_CORE, NULL))
    {
-      if (menu_driver_ctl(RARCH_MENU_CTL_IS_ALIVE, NULL))
+      if (menu_driver_is_alive())
       {
          if (rarch_ctl(RARCH_CTL_IS_INITED, NULL) &&
                !rarch_ctl(RARCH_CTL_IS_DUMMY_CORE, NULL))
@@ -883,9 +819,9 @@ static enum runloop_state runloop_check_state(
       }
    }
    else
-      menu_event_keyboard_set(false, RETROK_F1);
+      menu_event_kb_set(false, RETROK_F1);
 
-   if (menu_driver_ctl(RARCH_MENU_CTL_IS_ALIVE, NULL))
+   if (menu_driver_is_alive())
    {
       if (!settings->menu.throttle_framerate && !settings->fastforward_ratio)
          return RUNLOOP_STATE_MENU_ITERATE;
@@ -922,6 +858,9 @@ static enum runloop_state runloop_check_state(
 #ifdef HAVE_NETWORKING
    tmp = runloop_cmd_triggered(trigger_input, RARCH_NETPLAY_FLIP);
    netplay_driver_ctl(RARCH_NETPLAY_CTL_FLIP_PLAYERS, &tmp);
+   tmp = runloop_cmd_triggered(trigger_input, RARCH_NETPLAY_GAME_WATCH);
+   if (tmp)
+      netplay_driver_ctl(RARCH_NETPLAY_CTL_GAME_WATCH, NULL);
    tmp = runloop_cmd_triggered(trigger_input, RARCH_FULLSCREEN_TOGGLE_KEY);
 #endif
 
@@ -954,7 +893,7 @@ static enum runloop_state runloop_check_state(
       if (runloop_cmd_triggered(trigger_input, RARCH_FULLSCREEN_TOGGLE_KEY))
       {
          command_event(CMD_EVENT_FULLSCREEN_TOGGLE, NULL);
-         if (!runloop_ctl(RUNLOOP_CTL_IS_IDLE, NULL))
+         if (!runloop_idle)
             video_driver_cached_frame();
       }
 
@@ -972,7 +911,7 @@ static enum runloop_state runloop_check_state(
          input_driver_unset_nonblock_state();
       else
          input_driver_set_nonblock_state();
-      driver_ctl(RARCH_DRIVER_CTL_SET_NONBLOCK_STATE, NULL);
+      driver_set_nonblock_state();
    }
    else if ((runloop_cmd_pressed(old_input, RARCH_FAST_FORWARD_HOLD_KEY) 
          != runloop_cmd_press(current_input, RARCH_FAST_FORWARD_HOLD_KEY)))
@@ -981,7 +920,7 @@ static enum runloop_state runloop_check_state(
          input_driver_set_nonblock_state();
       else
          input_driver_unset_nonblock_state();
-      driver_ctl(RARCH_DRIVER_CTL_SET_NONBLOCK_STATE, NULL);
+      driver_set_nonblock_state();
    }
 
    /* Checks if the state increase/decrease keys have been pressed 
@@ -1028,7 +967,8 @@ static enum runloop_state runloop_check_state(
 #ifdef HAVE_CHEEVOS
    if (!settings->cheevos.hardcore_mode_enable)
 #endif
-      state_manager_check_rewind(runloop_cmd_press(current_input, RARCH_REWIND));
+      state_manager_check_rewind(runloop_cmd_press(current_input, RARCH_REWIND),
+            settings->rewind_granularity, runloop_paused);
 
    runloop_slowmotion = runloop_cmd_press(current_input, RARCH_SLOWMOTION);
 
@@ -1037,7 +977,7 @@ static enum runloop_state runloop_check_state(
       /* Checks if slowmotion toggle/hold was being pressed and/or held. */
       if (settings->video.black_frame_insertion)
       {
-         if (!runloop_ctl(RUNLOOP_CTL_IS_IDLE, NULL))
+         if (!runloop_idle)
             video_driver_cached_frame();
       }
 
@@ -1076,7 +1016,12 @@ static enum runloop_state runloop_check_state(
    return RUNLOOP_STATE_ITERATE;
 }
 
-#define runloop_menu_unified_controls_pressed() (menu_driver_ctl(RARCH_MENU_CTL_IS_ALIVE, NULL))
+#ifdef HAVE_NETWORKING
+/* FIXME: This is an ugly way to tell Netplay this... */
+#define runloop_netplay_pause() netplay_driver_ctl(RARCH_NETPLAY_CTL_PAUSE, NULL)
+#else
+#define runloop_netplay_pause() ((void)0)
+#endif
 
 /**
  * runloop_iterate:
@@ -1095,10 +1040,15 @@ int runloop_iterate(unsigned *sleep_ms)
    static uint64_t last_input                   = 0;
    settings_t *settings                         = config_get_ptr();
    uint64_t old_input                           = last_input;
+#ifdef HAVE_MENU
+   bool menu_is_alive                           = menu_driver_is_alive();
+#else
+   bool menu_is_alive                           = false;
+#endif
    uint64_t current_input                       =
 
 #ifdef HAVE_MENU
-      runloop_menu_unified_controls_pressed() ? 
+      menu_is_alive ? 
       input_menu_keys_pressed(old_input,
             &last_input, &trigger_input, runloop_paused) :
 #endif
@@ -1145,25 +1095,16 @@ int runloop_iterate(unsigned *sleep_ms)
          return -1;
       case RUNLOOP_STATE_SLEEP:
          core_poll();
-#ifdef HAVE_NETWORKING
-         /* FIXME: This is an ugly way to tell Netplay this... */
-         netplay_driver_ctl(RARCH_NETPLAY_CTL_PAUSE, NULL);
-#endif
+         runloop_netplay_pause();
          *sleep_ms = 10;
          return 1;
       case RUNLOOP_STATE_END:
          core_poll();
-#ifdef HAVE_NETWORKING
-         /* FIXME: This is an ugly way to tell Netplay this... */
-         netplay_driver_ctl(RARCH_NETPLAY_CTL_PAUSE, NULL);
-#endif
+         runloop_netplay_pause();
          goto end;
       case RUNLOOP_STATE_MENU_ITERATE:
          core_poll();
-#ifdef HAVE_NETWORKING
-         /* FIXME: This is an ugly way to tell Netplay this... */
-         netplay_driver_ctl(RARCH_NETPLAY_CTL_PAUSE, NULL);
-#endif
+         runloop_netplay_pause();
          return 0;
       case RUNLOOP_STATE_ITERATE:
       case RUNLOOP_STATE_NONE:
@@ -1172,8 +1113,7 @@ int runloop_iterate(unsigned *sleep_ms)
 
    autosave_lock();
 
-   if (bsv_movie_ctl(BSV_MOVIE_CTL_IS_INITED, NULL))
-      bsv_movie_ctl(BSV_MOVIE_CTL_SET_FRAME_START, NULL);
+   bsv_movie_set_frame_start();
 
    camera_driver_ctl(RARCH_CAMERA_CTL_POLL, NULL);
 
@@ -1215,8 +1155,7 @@ int runloop_iterate(unsigned *sleep_ms)
       input_pop_analog_dpad(auto_binds);
    }
 
-   if (bsv_movie_ctl(BSV_MOVIE_CTL_IS_INITED, NULL))
-      bsv_movie_ctl(BSV_MOVIE_CTL_SET_FRAME_END, NULL);
+   bsv_movie_set_frame_end();
 
    autosave_unlock();
 

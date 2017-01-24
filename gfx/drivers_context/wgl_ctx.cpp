@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -41,7 +41,6 @@
 
 #include "../../configuration.h"
 #include "../../dynamic.h"
-#include "../../runloop.h"
 #include "../video_context_driver.h"
 
 #include "../common/win32_common.h"
@@ -276,12 +275,12 @@ void *dinput_wgl;
 static void gfx_ctx_wgl_swap_interval(void *data, unsigned interval)
 {
    (void)data;
-   win32_interval = interval;
 
    switch (win32_api)
    {
       case GFX_CTX_OPENGL_API:
 #ifdef HAVE_OPENGL
+         win32_interval = interval;
          if (!win32_hrc)
             return;
          if (!p_swap_interval)
@@ -306,12 +305,14 @@ static void gfx_ctx_wgl_swap_interval(void *data, unsigned interval)
 
       case GFX_CTX_NONE:
       default:
+         win32_interval = interval;
          break;
    }
 }
 
 static void gfx_ctx_wgl_check_window(void *data, bool *quit,
-      bool *resize, unsigned *width, unsigned *height, unsigned frame_count)
+      bool *resize, unsigned *width, unsigned *height,
+      bool is_shutdown)
 {
    win32_check_window(quit, resize, width, height);
 
@@ -330,7 +331,7 @@ static void gfx_ctx_wgl_check_window(void *data, bool *quit,
    }
 }
 
-static void gfx_ctx_wgl_swap_buffers(void *data)
+static void gfx_ctx_wgl_swap_buffers(void *data, video_frame_info_t *video_info)
 {
    (void)data;
 
@@ -385,20 +386,21 @@ static bool gfx_ctx_wgl_set_resize(void *data,
    return false;
 }
 
-static void gfx_ctx_wgl_update_window_title(void *data)
+static void gfx_ctx_wgl_update_title(void *data, video_frame_info_t *video_info)
 {
-   char buf[128];
-   char buf_fps[128];
-   settings_t      *settings = config_get_ptr();
    const ui_window_t *window = ui_companion_driver_get_window_ptr();
 
-   buf[0] = buf_fps[0] = '\0';
+   if (window)
+   {
+      char title[128];
 
-   if (window && video_monitor_get_fps(buf, sizeof(buf),
-            buf_fps, sizeof(buf_fps)))
-      window->set_title(&main_window, buf);
-   if (settings->fps_show)
-      runloop_msg_queue_push(buf_fps, 1, 1, false);
+      title[0] = '\0';
+
+      video_driver_get_window_title(title, sizeof(title));
+
+      if (title[0])
+         window->set_title(&main_window, title);
+   }
 }
 
 static void gfx_ctx_wgl_get_video_size(void *data,
@@ -426,7 +428,7 @@ static void gfx_ctx_wgl_get_video_size(void *data,
    }
 }
 
-static void *gfx_ctx_wgl_init(void *video_driver)
+static void *gfx_ctx_wgl_init(video_frame_info_t *video_info, void *video_driver)
 {
    WNDCLASSEX wndclass = {0};
 
@@ -525,6 +527,7 @@ static void gfx_ctx_wgl_destroy(void *data)
 }
 
 static bool gfx_ctx_wgl_set_video_mode(void *data,
+      video_frame_info_t *video_info,
       unsigned width, unsigned height,
       bool fullscreen)
 {
@@ -558,14 +561,13 @@ error:
 
 
 static void gfx_ctx_wgl_input_driver(void *data,
+      const char *joypad_name,
       const input_driver_t **input, void **input_data)
 {
-   (void)data;
+   dinput_wgl           = input_dinput.init(joypad_name);
 
-   dinput_wgl   = input_dinput.init();
-
-   *input       = dinput_wgl ? &input_dinput : NULL;
-   *input_data  = dinput_wgl;
+   *input               = dinput_wgl ? &input_dinput : NULL;
+   *input_data          = dinput_wgl;
 }
 
 static bool gfx_ctx_wgl_has_focus(void *data)
@@ -687,7 +689,7 @@ const gfx_ctx_driver_t gfx_ctx_wgl = {
    NULL, /* get_video_output_next */
    gfx_ctx_wgl_get_metrics,
    NULL,
-   gfx_ctx_wgl_update_window_title,
+   gfx_ctx_wgl_update_title,
    gfx_ctx_wgl_check_window,
    gfx_ctx_wgl_set_resize,
    gfx_ctx_wgl_has_focus,

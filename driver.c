@@ -18,6 +18,8 @@
 #include <compat/posix_string.h>
 #include <string/stdstring.h>
 
+#include <audio/audio_resampler.h>
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -30,13 +32,13 @@
 #include "msg_hash.h"
 
 #include "audio/audio_driver.h"
-#include "audio/audio_resampler_driver.h"
 #include "camera/camera_driver.h"
 #include "record/record_driver.h"
 #include "location/location_driver.h"
 #include "wifi/wifi_driver.h"
 #include "configuration.h"
 #include "core.h"
+#include "core_info.h"
 #include "driver.h"
 #include "runloop.h"
 #include "verbosity.h"
@@ -223,7 +225,7 @@ static void driver_adjust_system_rates(void)
    if (runloop_ctl(RUNLOOP_CTL_IS_NONBLOCK_FORCED, NULL))
       command_event(CMD_EVENT_VIDEO_SET_NONBLOCKING_STATE, NULL);
    else
-      driver_ctl(RARCH_DRIVER_CTL_SET_NONBLOCK_STATE, NULL);
+      driver_set_nonblock_state();
 }
 
 /**
@@ -234,7 +236,7 @@ static void driver_adjust_system_rates(void)
  * If nonblock state is false, sets 
  * blocking state for both audio and video drivers instead.
  **/
-static void driver_set_nonblock_state(void)
+void driver_set_nonblock_state(void)
 {
    bool                 enable = input_driver_is_nonblock_state();
 
@@ -285,13 +287,13 @@ static bool driver_update_system_av_info(const struct retro_system_av_info *info
 }
 
 /**
- * init_drivers:
+ * drivers_init:
  * @flags              : Bitmask of drivers to initialize.
  *
  * Initializes drivers.
  * @flags determines which drivers get initialized.
  **/
-static void init_drivers(int flags)
+void drivers_init(int flags)
 {
    if (flags & DRIVER_VIDEO_MASK)
       video_driver_unset_own_driver();
@@ -344,6 +346,8 @@ static void init_drivers(int flags)
    if ((flags & DRIVER_LOCATION_MASK) && location_driver_ctl(RARCH_LOCATION_CTL_IS_ACTIVE, NULL))
       init_location();
 
+   core_info_init_current_core();
+
 #ifdef HAVE_MENU
    if (flags & DRIVER_MENU_MASK)
    {
@@ -356,7 +360,7 @@ static void init_drivers(int flags)
    {
       /* Keep non-throttled state as good as possible. */
       if (input_driver_is_nonblock_state())
-         driver_ctl(RARCH_DRIVER_CTL_SET_NONBLOCK_STATE, NULL);
+         driver_set_nonblock_state();
    }
 }
 
@@ -387,6 +391,9 @@ static void init_drivers(int flags)
  **/
 static void uninit_drivers(int flags)
 {
+   core_info_deinit_list();
+   core_info_free_current_core();
+
 #ifdef HAVE_MENU
    if (flags & DRIVER_MENU_MASK)
       menu_driver_ctl(RARCH_MENU_CTL_DEINIT, NULL);
@@ -446,19 +453,6 @@ bool driver_ctl(enum driver_ctl_state state, void *data)
             int flags = DRIVERS_CMD_ALL;
             return driver_ctl(RARCH_DRIVER_CTL_UNINIT, &flags);
          }
-      case RARCH_DRIVER_CTL_INIT:
-         {
-            int *flags = (int*)data;
-            if (!flags)
-               return false;
-            init_drivers(*flags);
-         }
-         break;
-      case RARCH_DRIVER_CTL_INIT_ALL:
-         {
-            int flags = DRIVERS_CMD_ALL;
-            return driver_ctl(RARCH_DRIVER_CTL_INIT, &flags);
-         }
       case RARCH_DRIVER_CTL_INIT_PRE:
          audio_driver_find_driver();
          video_driver_find_driver();
@@ -477,9 +471,6 @@ bool driver_ctl(enum driver_ctl_state state, void *data)
             audio_driver_monitor_set_rate();
             driver_adjust_system_rates();
          }
-         break;
-      case RARCH_DRIVER_CTL_SET_NONBLOCK_STATE:
-         driver_set_nonblock_state();
          break;
       case RARCH_DRIVER_CTL_UPDATE_SYSTEM_AV_INFO:
          {

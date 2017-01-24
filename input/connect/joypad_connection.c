@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2013-2014 - Jason Fetters
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -115,6 +115,15 @@ int32_t pad_connection_pad_init(joypad_connection_t *joyconn,
             s->connected  = true;
             break;
          }
+      }
+
+      /* We failed to find a matching pad, 
+       * set up one without an interface */
+      if (!s->connected)
+      {
+         s->iface = NULL;
+         s->data = data;
+         s->connected = true;
       }
    }
 

@@ -23,7 +23,6 @@
 #include <compat/posix_string.h>
 #include <string/stdstring.h>
 #include <streams/file_stream.h>
-#include <retro_miscellaneous.h>
 #include <file/file_path.h>
 
 #include "playlist.h"
@@ -150,29 +149,28 @@ static void playlist_free_entry(struct playlist_entry *entry)
    if (!entry)
       return;
 
-   if (entry->path)
+   if (!string_is_empty(entry->path))
       free(entry->path);
-
-   if (entry->label)
-      free(entry->label);
-
-   if (entry->core_path)
-      free(entry->core_path);
-
-   if (entry->core_name)
-      free(entry->core_name);
-
-   if (entry->db_name)
-      free(entry->db_name);
-
-   if (entry->crc32)
-      free(entry->crc32);
-
    entry->path      = NULL;
+
+   if (!string_is_empty(entry->label))
+      free(entry->label);
    entry->label     = NULL;
+
+   if (!string_is_empty(entry->core_path))
+      free(entry->core_path);
    entry->core_path = NULL;
+
+   if (!string_is_empty(entry->core_name))
+      free(entry->core_name);
    entry->core_name = NULL;
+
+   if (!string_is_empty(entry->db_name))
+      free(entry->db_name);
    entry->db_name   = NULL;
+
+   if (!string_is_empty(entry->crc32))
+      free(entry->crc32);
    entry->crc32     = NULL;
 }
 
@@ -310,16 +308,16 @@ bool playlist_push(playlist_t *playlist,
    memmove(playlist->entries + 1, playlist->entries,
          (playlist->cap - 1) * sizeof(struct playlist_entry));
 
-   playlist->entries[0].path      = NULL;
-   playlist->entries[0].label     = NULL;
-   playlist->entries[0].core_path = NULL;
-   playlist->entries[0].core_name = NULL;
-   playlist->entries[0].db_name   = NULL;
-   playlist->entries[0].crc32     = NULL;
+   playlist->entries[0].path         = NULL;
+   playlist->entries[0].label        = NULL;
+   playlist->entries[0].core_path    = NULL;
+   playlist->entries[0].core_name    = NULL;
+   playlist->entries[0].db_name      = NULL;
+   playlist->entries[0].crc32        = NULL;
    if (!string_is_empty(path))
-      playlist->entries[0].path   = strdup(path);
+      playlist->entries[0].path      = strdup(path);
    if (!string_is_empty(label))
-      playlist->entries[0].label  = strdup(label);
+      playlist->entries[0].label     = strdup(label);
    if (!string_is_empty(core_path))
       playlist->entries[0].core_path = strdup(core_path);
    if (!string_is_empty(core_name))
@@ -463,9 +461,13 @@ static bool playlist_read_file(
          if (!filestream_gets(file, buf[i], sizeof(buf[i])))
             goto end;
 
-         last = strrchr(buf[i], '\n');
-         if (last)
-            *last = '\0';
+         /* Read playlist entry and terminate string with NUL character
+          * regardless of Windows or Unix line endings
+          */
+          if((last = strrchr(buf[i], '\r')))
+             *last = '\0';
+          else if((last = strrchr(buf[i], '\n')))
+             *last = '\0';	
       }
 
       entry = &playlist->entries[playlist->size];
@@ -477,6 +479,7 @@ static bool playlist_read_file(
          entry->path      = strdup(buf[0]);
       if (*buf[1])
          entry->label     = strdup(buf[1]);
+
       entry->core_path    = strdup(buf[2]);
       entry->core_name    = strdup(buf[3]);
       if (*buf[4])
@@ -502,41 +505,32 @@ end:
  **/
 playlist_t *playlist_init(const char *path, size_t size)
 {
-   playlist_t *playlist = (playlist_t*)
-      calloc(1, sizeof(*playlist));
+   struct playlist_entry *entries = NULL;
+   playlist_t           *playlist = (playlist_t*)calloc(1, sizeof(*playlist));
    if (!playlist)
       return NULL;
 
-   playlist->entries = (struct playlist_entry*)calloc(size,
-         sizeof(*playlist->entries));
-   if (!playlist->entries)
-      goto error;
+   entries = (struct playlist_entry*)calloc(size, sizeof(*entries));
+   if (!entries)
+   {
+      free(playlist);
+      return NULL;
+   }
 
-   playlist->cap = size;
+   playlist->entries   = entries;
+   playlist->cap       = size;
 
    playlist_read_file(playlist, path);
 
    playlist->conf_path = strdup(path);
    return playlist;
-
-error:
-   playlist_free(playlist);
-   return NULL;
-}
-
-static const char *playlist_entry_get_label(
-      const struct playlist_entry *entry)
-{
-   if (!entry)
-      return NULL;
-   return entry->label;
 }
 
 static int playlist_qsort_func(const struct playlist_entry *a,
       const struct playlist_entry *b)
 {
-   const char *a_label = playlist_entry_get_label(a);
-   const char *b_label = playlist_entry_get_label(b);
+   const char *a_label = a ? a->label : NULL;
+   const char *b_label = b ? b->label : NULL;
 
    if (!a_label || !b_label)
       return 0;

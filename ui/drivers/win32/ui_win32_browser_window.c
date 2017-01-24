@@ -1,5 +1,5 @@
 /* RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  * RetroArch is free software: you can redistribute it and/or modify it under the terms
  * of the GNU General Public License as published by the Free Software Found-
@@ -37,9 +37,9 @@ static bool ui_browser_window_win32_core(ui_browser_window_state_t *state, bool 
    ofn.nMaxFile        = PATH_MAX;
    ofn.Flags           = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
 
-   if ( save && !GetOpenFileName(&ofn))
+   if (!save && !GetOpenFileName(&ofn))
       return false;
-   if (!save && !GetSaveFileName(&ofn))
+   if ( save && !GetSaveFileName(&ofn))
       return false;
 
    return true;

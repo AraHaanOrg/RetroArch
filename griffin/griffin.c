@@ -1,6 +1,6 @@
 /* RetroArch - A frontend for libretro.
 * Copyright (C) 2010-2014 - Hans-Kristian Arntzen
-* Copyright (C) 2011-2016 - Daniel De Matteis
+* Copyright (C) 2011-2017 - Daniel De Matteis
 *
 * RetroArch is free software: you can redistribute it and/or modify it under the terms
 * of the GNU General Public License as published by the Free Software Found-
@@ -122,7 +122,7 @@ CONFIG FILE
 #endif
 
 #include "../libretro-common/file/config_file.c"
-#include "../config_file_userdata.c"
+#include "../libretro-common/file/config_file_userdata.c"
 #include "../managers/core_option_manager.c"
 
 /*============================================================
@@ -163,7 +163,7 @@ VIDEO CONTEXT
 #elif defined(ANDROID)
 #include "../gfx/drivers_context/android_ctx.c"
 #elif defined(__QNX__)
-#include "../gfx/drivers_context/bbqnx_ctx.c"
+#include "../gfx/drivers_context/qnx_ctx.c"
 #elif defined(EMSCRIPTEN)
 #include "../gfx/drivers_context/emscriptenegl_ctx.c"
 #elif defined(__APPLE__) && !defined(TARGET_IPHONE_SIMULATOR) && !defined(TARGET_OS_IPHONE)
@@ -220,7 +220,6 @@ VIDEO CONTEXT
 #endif
 
 #endif
-
 
 /*============================================================
 VIDEO SHADERS
@@ -355,8 +354,14 @@ VIDEO DRIVER
 #include "../gfx/drivers/ctr_gfx.c"
 #elif defined(XENON)
 #include "../gfx/drivers/xenon360_gfx.c"
+#elif defined(DJGPP)
+#include "../gfx/drivers/vga_gfx.c"
 #endif
 #include "../gfx/drivers/nullgfx.c"
+
+#if defined(_WIN32) && !defined(_XBOX)
+#include "../gfx/drivers/gdi_gfx.c"
+#endif
 
 /*============================================================
 FONTS
@@ -402,6 +407,13 @@ FONTS
 #include "../gfx/drivers_font/caca_font.c"
 #endif
 
+#if defined(DJGPP)
+#include "../gfx/drivers_font/vga_font.c"
+#endif
+
+#if defined(_WIN32) && !defined(_XBOX)
+#include "../gfx/drivers_font/gdi_font.c"
+#endif
 
 #if defined(HAVE_VULKAN)
 #include "../gfx/drivers_font/vulkan_raster_font.c"
@@ -456,6 +468,9 @@ INPUT
 #include "../input/drivers_joypad/qnx_joypad.c"
 #elif defined(EMSCRIPTEN)
 #include "../input/drivers/rwebinput_input.c"
+#elif defined(DJGPP)
+#include "../input/drivers/dos_input.c"
+#include "../input/drivers_joypad/dos_joypad.c"
 #endif
 
 #ifdef HAVE_DINPUT
@@ -556,11 +571,13 @@ FIFO BUFFER
 /*============================================================
 AUDIO RESAMPLER
 ============================================================ */
-#include "../audio/audio_resampler_driver.c"
-#include "../audio/drivers_resampler/sinc_resampler.c"
-#include "../audio/drivers_resampler/nearest_resampler.c"
-#include "../audio/drivers_resampler/null_resampler.c"
+#include "../libretro-common/audio/resampler/audio_resampler.c"
+#include "../libretro-common/audio/resampler/drivers/sinc_resampler.c"
+#include "../libretro-common/audio/resampler/drivers/nearest_resampler.c"
+#include "../libretro-common/audio/resampler/drivers/null_resampler.c"
+#ifdef HAVE_CC_RESAMPLER
 #include "../audio/drivers_resampler/cc_resampler.c"
+#endif
 
 /*============================================================
 CAMERA
@@ -682,22 +699,23 @@ FILTERS
 #include "../gfx/video_filters/lq2x.c"
 #include "../gfx/video_filters/phosphor2x.c"
 
-#include "../audio/audio_filters/echo.c"
-#include "../audio/audio_filters/eq.c"
-#include "../audio/audio_filters/chorus.c"
-#include "../audio/audio_filters/iir.c"
-#include "../audio/audio_filters/panning.c"
-#include "../audio/audio_filters/phaser.c"
-#include "../audio/audio_filters/reverb.c"
-#include "../audio/audio_filters/wahwah.c"
+#include "../libretro-common/audio/dsp_filters/echo.c"
+#include "../libretro-common/audio/dsp_filters/eq.c"
+#include "../libretro-common/audio/dsp_filters/chorus.c"
+#include "../libretro-common/audio/dsp_filters/iir.c"
+#include "../libretro-common/audio/dsp_filters/panning.c"
+#include "../libretro-common/audio/dsp_filters/phaser.c"
+#include "../libretro-common/audio/dsp_filters/reverb.c"
+#include "../libretro-common/audio/dsp_filters/wahwah.c"
 #endif
+
 /*============================================================
 DYNAMIC
 ============================================================ */
 #include "../libretro-common/dynamic/dylib.c"
 #include "../dynamic.c"
 #include "../gfx/video_filter.c"
-#include "../audio/audio_dsp_filter.c"
+#include "../libretro-common/audio/dsp_filter.c"
 
 /*============================================================
 CORES
@@ -775,6 +793,8 @@ FRONTEND
 #include "../frontend/drivers/platform_linux.c"
 #elif defined(BSD) && !defined(__MACH__)
 #include "../frontend/drivers/platform_bsd.c"
+#elif defined(DJGPP)
+#include "../frontend/drivers/platform_dos.c"
 #endif
 #include "../frontend/drivers/platform_null.c"
 
@@ -879,11 +899,14 @@ THREAD
 NETPLAY
 ============================================================ */
 #ifdef HAVE_NETWORKING
-#include "../network/netplay/netplay_net.c"
-#include "../network/netplay/netplay_spectate.c"
-#include "../network/netplay/netplay_common.c"
+#include "../network/netplay/netplay_delta.c"
+#include "../network/netplay/netplay_frontend.c"
+#include "../network/netplay/netplay_handshake.c"
+#include "../network/netplay/netplay_init.c"
+#include "../network/netplay/netplay_io.c"
+#include "../network/netplay/netplay_sync.c"
 #include "../network/netplay/netplay_discovery.c"
-#include "../network/netplay/netplay.c"
+#include "../network/netplay/netplay_buf.c"
 #include "../libretro-common/net/net_compat.c"
 #include "../libretro-common/net/net_socket.c"
 #include "../libretro-common/net/net_http.c"
@@ -894,11 +917,13 @@ NETPLAY
 #include "../tasks/task_http.c"
 #include "../tasks/task_netplay_lan_scan.c"
 #include "../tasks/task_wifi.c"
+#include "../tasks/task_netplay_find_content.c"
 #endif
 
 /*============================================================
 DATA RUNLOOP
 ============================================================ */
+#include "../tasks/task_powerstate.c"
 #include "../tasks/task_content.c"
 #include "../tasks/task_save.c"
 #include "../tasks/task_image.c"
@@ -933,10 +958,12 @@ MENU
 #include "../menu/menu_cbs.c"
 #include "../menu/menu_content.c"
 #include "../menu/widgets/menu_entry.c"
+#include "../menu/widgets/menu_filebrowser.c"
 #include "../menu/widgets/menu_dialog.c"
 #include "../menu/widgets/menu_input_dialog.c"
 #include "../menu/widgets/menu_input_bind_dialog.c"
 #include "../menu/widgets/menu_list.c"
+#include "../menu/widgets/menu_osk.c"
 #include "../menu/cbs/menu_cbs_ok.c"
 #include "../menu/cbs/menu_cbs_cancel.c"
 #include "../menu/cbs/menu_cbs_select.c"
@@ -985,6 +1012,14 @@ MENU
 #include "../menu/drivers_display/menu_display_caca.c"
 #endif
 
+#ifdef DJGPP
+#include "../menu/drivers_display/menu_display_vga.c"
+#endif
+
+#if defined(_WIN32) && !defined(_XBOX)
+#include "../menu/drivers_display/menu_display_gdi.c"
+#endif
+
 #endif
 
 
@@ -992,7 +1027,7 @@ MENU
 #include "../menu/drivers/rgui.c"
 #endif
 
-#if defined(HAVE_OPENGL) || defined(HAVE_VITA2D) || defined(_3DS)
+#if defined(HAVE_OPENGL) || defined(HAVE_VITA2D) || defined(_3DS) || defined(_MSC_VER)
 #ifdef HAVE_XMB
 #include "../menu/drivers/xmb.c"
 #endif
@@ -1026,6 +1061,10 @@ MENU
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#if defined(HAVE_NETWORKING)
+#include "../libretro-common/net/net_http_parse.c"
 #endif
 
 /*============================================================
@@ -1078,8 +1117,9 @@ XML
 /*============================================================
  AUDIO UTILS
 ============================================================ */
-#include "../libretro-common/conversion/s16_to_float.c"
-#include "../libretro-common/conversion/float_to_s16.c"
+#include "../libretro-common/audio/conversion/s16_to_float.c"
+#include "../libretro-common/audio/conversion/float_to_s16.c"
+#include "../libretro-common/audio/audio_mix.c"
 
 /*============================================================
  LIBRETRODB

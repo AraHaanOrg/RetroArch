@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -33,8 +34,6 @@
 #endif
 
 #include "shader_glsl.h"
-#include "../video_state_tracker.h"
-#include "../../dynamic.h"
 #include "../../managers/state_manager.h"
 #include "../../core.h"
 
@@ -129,6 +128,7 @@ static const char *glsl_prefixes[] = {
 #include "../drivers/gl_shaders/legacy_pipeline_xmb_ribbon.glsl.vert.h"
 #include "../drivers/gl_shaders/modern_pipeline_xmb_ribbon.glsl.vert.h"
 #include "../drivers/gl_shaders/pipeline_xmb_ribbon.glsl.frag.h"
+#include "../drivers/gl_shaders/pipeline_bokeh.glsl.frag.h"
 #endif
 
 typedef struct glsl_shader_data
@@ -414,8 +414,8 @@ static bool gl_glsl_load_source_path(struct video_shader_pass *pass,
       const char *path)
 {
    ssize_t len;
-   int nitems = filestream_read_file(path,
-         (void**)&pass->source.string.vertex, &len);
+   int nitems = pass ? filestream_read_file(path,
+         (void**)&pass->source.string.vertex, &len) : 0;
 
    if (nitems <= 0 || len <= 0)
       return false;
@@ -881,23 +881,27 @@ static void *gl_glsl_init(void *data, const char *path)
    if (glsl->shader->variables)
    {
       retro_ctx_memory_info_t mem_info;
-      struct state_tracker_info info = {0};
+      struct state_tracker_info info;
 
-      mem_info.id    = RETRO_MEMORY_SYSTEM_RAM;
+      mem_info.id         = RETRO_MEMORY_SYSTEM_RAM;
 
       core_get_memory(&mem_info);
 
-      info.wram      = (uint8_t*)mem_info.data;
-      info.info      = glsl->shader->variable;
-      info.info_elem = glsl->shader->variables;
+      info.wram           = (uint8_t*)mem_info.data;
+      info.info           = glsl->shader->variable;
+      info.info_elem      = glsl->shader->variables;
 
+      info.script         = NULL;
+      info.script_class   = NULL;
 #ifdef HAVE_PYTHON
-      info.script = glsl->shader->script;
-      info.script_class = *glsl->shader->script_class ?
-         glsl->shader->script_class : NULL;
+      info.script         = glsl->shader->script;
+      if (*glsl->shader->script_class)
+         info.script_class= glsl->shader->script_class;
 #endif
+      info.script_is_file = NULL;
 
       glsl->state_tracker = state_tracker_init(&info);
+
       if (!glsl->state_tracker)
          RARCH_WARN("Failed to init state tracker.\n");
    }
@@ -997,6 +1001,21 @@ static void *gl_glsl_init(void *data, const char *path)
          &shader_prog_info);
    gl_glsl_find_uniforms(glsl, 0, glsl->prg[VIDEO_SHADER_MENU_4].id,
          &glsl->uniforms[VIDEO_SHADER_MENU_4]);
+
+#if defined(HAVE_OPENGLES)
+   shader_prog_info.vertex   = stock_vertex_xmb_snow_modern;
+#else
+   shader_prog_info.vertex   = glsl_core ? stock_vertex_xmb_snow_modern : stock_vertex_xmb_snow_legacy;
+#endif
+   shader_prog_info.fragment = stock_fragment_xmb_bokeh;
+
+   gl_glsl_compile_program(
+         glsl,
+         VIDEO_SHADER_MENU_5,
+         &glsl->prg[VIDEO_SHADER_MENU_5],
+         &shader_prog_info);
+   gl_glsl_find_uniforms(glsl, 0, glsl->prg[VIDEO_SHADER_MENU_5].id,
+         &glsl->uniforms[VIDEO_SHADER_MENU_5]);
 #endif
 
    gl_glsl_reset_attrib(glsl);
@@ -1347,12 +1366,16 @@ static bool gl_glsl_set_mvp(void *data, void *shader_data, const math_matrix_4x4
       goto fallback;
 
    loc = glsl->uniforms[glsl->active_idx].mvp;
-   if (loc >= 0) {
-      if (current_idx != glsl->active_idx || mat->data != current_mat_data_pointer[glsl->active_idx] || *mat->data != current_mat_data[glsl->active_idx]) {
+   if (loc >= 0)
+   {
+      if (  (current_idx != glsl->active_idx) || 
+            (mat->data != current_mat_data_pointer[glsl->active_idx]) || 
+            (*mat->data != current_mat_data[glsl->active_idx]))
+      {
          glUniformMatrix4fv(loc, 1, GL_FALSE, mat->data);
-         current_idx = glsl->active_idx;
+         current_idx                                = glsl->active_idx;
          current_mat_data_pointer[glsl->active_idx] = (float*)mat->data;
-         current_mat_data[glsl->active_idx] = *mat->data;
+         current_mat_data[glsl->active_idx]         = *mat->data;
       }
    }
    return true;

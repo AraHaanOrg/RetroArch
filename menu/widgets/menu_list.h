@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -39,6 +39,7 @@ typedef struct menu_ctx_list
    file_list_t *list;
    size_t list_size;
    const char *path;
+   char *fullpath;
    const char *label;
    size_t idx;
    enum menu_list_type type;

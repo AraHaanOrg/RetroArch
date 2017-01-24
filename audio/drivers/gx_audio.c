@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -28,7 +28,6 @@
 #include <retro_inline.h>
 
 #include "../audio_driver.h"
-#include "../../configuration.h"
 #include "../../defines/gx_defines.h"
 
 typedef struct
@@ -69,9 +68,10 @@ static void dma_callback(void)
 }
 
 static void *gx_audio_init(const char *device,
-      unsigned rate, unsigned latency)
+      unsigned rate, unsigned latency,
+      unsigned block_frames,
+      unsigned *new_rate)
 {
-   settings_t *settings = config_get_ptr();
    gx_audio_t *wa       = (gx_audio_t*)memalign(32, sizeof(*wa));
    if (!wa)
       return NULL;
@@ -86,12 +86,12 @@ static void *gx_audio_init(const char *device,
    if (rate < 33000)
    {
       AISetDSPSampleRate(AI_SAMPLERATE_32KHZ);
-      settings->audio.out_rate = 32000;
+      *new_rate = 32000;
    }
    else
    {
       AISetDSPSampleRate(AI_SAMPLERATE_48KHZ);
-      settings->audio.out_rate = 48000;
+      *new_rate = 48000;
    }
 
    OSInitThreadQueue(&wa->cond);
@@ -173,7 +173,7 @@ static void gx_audio_set_nonblock_state(void *data, bool state)
       wa->nonblock = state;
 }
 
-static bool gx_audio_start(void *data)
+static bool gx_audio_start(void *data, bool is_shutdown)
 {
    gx_audio_t *wa = (gx_audio_t*)data;
 

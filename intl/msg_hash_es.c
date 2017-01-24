@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -1372,8 +1372,6 @@ const char *msg_hash_to_str_es(enum msg_hash_enums msg)
          return "Error:";
       case MSG_FAILED_TO_APPLY_SHADER:
          return "Error al aplicar shader.";
-      case MSG_FAILED_TO_LOAD_CONTENT:
-         return "Error al cargar el contenido";
       case MSG_FAILED_TO_LOAD_MOVIE_FILE:
          return "Error al cargar el archivo de película";
       case MSG_FAILED_TO_LOAD_OVERLAY:
@@ -1420,8 +1418,6 @@ const char *msg_hash_to_str_es(enum msg_hash_enums msg)
          return "Deteniendo grabación de vídeo.";
       case MSG_NETPLAY_FAILED:
          return "Error al iniciar el juego en red.";
-      case MSG_NETPLAY_FAILED_MOVIE_PLAYBACK_HAS_STARTED:
-         return "Se ha iniciado una reproducción. No se puede ejecutar el juego en red.";
       case MSG_PAUSED:
          return "En pausa.";
       case MSG_PROGRAM:
@@ -1552,7 +1548,7 @@ const char *msg_hash_to_str_es(enum msg_hash_enums msg)
       case MENU_ENUM_LABEL_VALUE_AUDIO_SETTINGS:
          return "Sonido";
       case MENU_ENUM_LABEL_VALUE_AUDIO_SYNC:
-         return "Activar sincronía de sonido";
+         return "Sincronía de sonido";
       case MENU_ENUM_LABEL_VALUE_AUDIO_VOLUME:
          return "Volumen de sonido (dB)";
       case MENU_ENUM_LABEL_VALUE_AUTOSAVE_INTERVAL:
@@ -1655,8 +1651,8 @@ const char *msg_hash_to_str_es(enum msg_hash_enums msg)
          return "Proporción personalizada";
       case MENU_ENUM_LABEL_VALUE_DATABASE_MANAGER:
          return "Gestor de bases de datos";
-      case MENU_ENUM_LABEL_VALUE_DETECT_CORE_LIST:
-         return "Seleccionar archivo y detectar núcleo";
+      case MENU_ENUM_LABEL_VALUE_FAVORITES:
+         return "Seleccionar archivo y detectar núcleo"; /* TODO/FIXME - update */
       case MENU_ENUM_LABEL_VALUE_DIRECTORY_CONTENT:
          return "(Carpeta de contenido)";
       case MENU_ENUM_LABEL_VALUE_DIRECTORY_DEFAULT:
@@ -1794,8 +1790,6 @@ const char *msg_hash_to_str_es(enum msg_hash_enums msg)
          return "Nivel de registro del núcleo";
       case MENU_ENUM_LABEL_VALUE_LINEAR:
          return "Lineal";
-      case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT:
-         return "Seleccionar archivo";
       case MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_HISTORY:
          return "Cargar archivos recientes";
       case MENU_ENUM_LABEL_VALUE_LOAD_STATE:

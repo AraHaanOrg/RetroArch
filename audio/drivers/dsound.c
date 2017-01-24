@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -35,7 +35,6 @@
 #include <queues/fifo_queue.h>
 
 #include "../audio_driver.h"
-#include "../../configuration.h"
 #include "../../verbosity.h"
 
 #ifdef _XBOX
@@ -303,7 +302,9 @@ static BOOL CALLBACK enumerate_cb(LPGUID guid, LPCSTR desc, LPCSTR module, LPVOI
    return TRUE;
 }
 
-static void *dsound_init(const char *device, unsigned rate, unsigned latency)
+static void *dsound_init(const char *device, unsigned rate, unsigned latency,
+      unsigned block_frames,
+      unsigned *new_rate)
 {
    WAVEFORMATEX wfx      = {0};
    DSBUFFERDESC bufdesc  = {0};
@@ -395,7 +396,7 @@ static bool dsound_stop(void *data)
    return (ds->is_paused) ? true : false;
 }
 
-static bool dsound_start(void *data)
+static bool dsound_start(void *data, bool is_shutdown)
 {
    dsound_t *ds = (dsound_t*)data;
 

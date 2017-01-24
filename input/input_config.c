@@ -1,7 +1,7 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2016 - Brad Parker
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2016-2017 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -21,6 +21,7 @@
 
 #include <compat/strl.h>
 #include <file/file_path.h>
+#include <file/config_file.h>
 #include <string/stdstring.h>
 
 #ifdef HAVE_CONFIG_H
@@ -124,7 +125,8 @@ const struct input_bind_map input_config_bind_map[RARCH_BIND_LIST_END_NULL] = {
       DECLARE_META_BIND(2, screenshot,            RARCH_SCREENSHOT,            MENU_ENUM_LABEL_VALUE_INPUT_META_SCREENSHOT),
       DECLARE_META_BIND(2, audio_mute,            RARCH_MUTE,                  MENU_ENUM_LABEL_VALUE_INPUT_META_MUTE),
       DECLARE_META_BIND(2, osk_toggle,            RARCH_OSK,                   MENU_ENUM_LABEL_VALUE_INPUT_META_OSK),
-      DECLARE_META_BIND(2, netplay_flip_players,  RARCH_NETPLAY_FLIP,          MENU_ENUM_LABEL_VALUE_INPUT_META_NETPLAY_FLIP),
+      DECLARE_META_BIND(2, netplay_flip_players_1_2, RARCH_NETPLAY_FLIP,       MENU_ENUM_LABEL_VALUE_INPUT_META_NETPLAY_FLIP),
+      DECLARE_META_BIND(2, netplay_game_watch,    RARCH_NETPLAY_GAME_WATCH,    MENU_ENUM_LABEL_VALUE_INPUT_META_NETPLAY_GAME_WATCH),
       DECLARE_META_BIND(2, slowmotion,            RARCH_SLOWMOTION,            MENU_ENUM_LABEL_VALUE_INPUT_META_SLOWMOTION),
       DECLARE_META_BIND(2, enable_hotkey,         RARCH_ENABLE_HOTKEY,         MENU_ENUM_LABEL_VALUE_INPUT_META_ENABLE_HOTKEY),
       DECLARE_META_BIND(2, volume_up,             RARCH_VOLUME_UP,             MENU_ENUM_LABEL_VALUE_INPUT_META_VOLUME_UP),
@@ -181,12 +183,13 @@ const char *input_config_bind_map_get_desc(unsigned i)
    return msg_hash_to_str(keybind->desc);
 }
 
-void input_config_parse_key(config_file_t *conf,
+void input_config_parse_key(void *data,
       const char *prefix, const char *btn,
       struct retro_keybind *bind)
 {
    char tmp[64];
    char key[64];
+   config_file_t *conf = (config_file_t*)data;
 
    tmp[0] = key[0] = '\0';
 
@@ -277,7 +280,7 @@ static void parse_hat(struct retro_keybind *bind, const char *str)
       return;
    }
 
-   if (string_is_equal_noncase(dir, "up"))
+   if      (string_is_equal_noncase(dir, "up"))
       hat_dir = HAT_UP_MASK;
    else if (string_is_equal_noncase(dir, "down"))
       hat_dir = HAT_DOWN_MASK;
@@ -290,16 +293,17 @@ static void parse_hat(struct retro_keybind *bind, const char *str)
       bind->joykey = HAT_MAP(hat, hat_dir);
 }
 
-void input_config_parse_joy_button(config_file_t *conf, const char *prefix,
+void input_config_parse_joy_button(void *data, const char *prefix,
       const char *btn, struct retro_keybind *bind)
 {
    char str[256];
    char tmp[64];
    char key[64];
-   char key_label[64]       = {0};
+   char key_label[64];
    char *tmp_a              = NULL;
+   config_file_t *conf      = (config_file_t*)data;
 
-   str[0] = tmp[0] = key[0] = '\0';
+   str[0] = tmp[0] = key[0] = key_label[0] = '\0';
 
    fill_pathname_join_delim(str, prefix, btn,
          '_', sizeof(str));
@@ -329,14 +333,15 @@ void input_config_parse_joy_button(config_file_t *conf, const char *prefix,
    }
 }
 
-void input_config_parse_joy_axis(config_file_t *conf, const char *prefix,
+void input_config_parse_joy_axis(void *data, const char *prefix,
       const char *axis, struct retro_keybind *bind)
 {
    char str[256];
    char       tmp[64];
    char       key[64];
    char key_label[64];
-   char        *tmp_a = NULL;
+   char        *tmp_a       = NULL;
+   config_file_t *conf      = (config_file_t*)data;
 
    str[0] = tmp[0] = key[0] = key_label[0] = '\0';
 
@@ -375,6 +380,7 @@ static void input_config_get_bind_string_joykey(char *buf, const char *prefix,
       const struct retro_keybind *bind, size_t size)
 {
    settings_t *settings = config_get_ptr();
+   bool label_show      = settings->input.input_descriptor_label_show;
 
    if (GET_HAT_DIR(bind->joykey))
    {
@@ -398,8 +404,7 @@ static void input_config_get_bind_string_joykey(char *buf, const char *prefix,
             break;
       }
 
-      if (!string_is_empty(bind->joykey_label) 
-            && settings->input.input_descriptor_label_show)
+      if (!string_is_empty(bind->joykey_label) && label_show)
          snprintf(buf, size, "%s %s ", prefix, bind->joykey_label);
       else
          snprintf(buf, size, "%sHat #%u %s (%s)", prefix,
@@ -408,8 +413,7 @@ static void input_config_get_bind_string_joykey(char *buf, const char *prefix,
    }
    else
    {
-      if (!string_is_empty(bind->joykey_label) 
-            && settings->input.input_descriptor_label_show)
+      if (!string_is_empty(bind->joykey_label) && label_show)
          snprintf(buf, size, "%s%s (btn) ", prefix, bind->joykey_label);
       else
          snprintf(buf, size, "%s%u (%s) ", prefix, (unsigned)bind->joykey,
@@ -472,6 +476,45 @@ void input_config_get_bind_string(char *buf, const struct retro_keybind *bind,
 #endif
 }
 
+const char *input_config_get_device_name(unsigned port)
+{
+   settings_t *settings = config_get_ptr();
+   if (string_is_empty(settings->input.device_names[port]))
+      return NULL;
+   return settings->input.device_names[port];
+}
+
+void input_config_set_device_name(unsigned port, const char *name)
+{
+   if (!string_is_empty(name))
+   {
+      settings_t *settings = config_get_ptr();
+      strlcpy(settings->input.device_names[port],
+            name,
+            sizeof(settings->input.device_names[port]));
+   }
+}
+
+void input_config_set_device(unsigned port, unsigned id)
+{
+   settings_t *settings = config_get_ptr();
+
+   if (settings)
+      settings->input.libretro_device[port] = id;
+}
+
+bool input_config_get_bind_idx(unsigned port, unsigned *joy_idx_real)
+{
+   settings_t *settings = config_get_ptr();
+   unsigned joy_idx     = settings->input.joypad_map[port];
+
+   if (joy_idx >= MAX_USERS)
+      return false;
+
+   *joy_idx_real        = joy_idx;
+   return true;
+}
+
 const struct retro_keybind *input_config_get_bind_auto(unsigned port, unsigned id)
 {
    settings_t *settings = config_get_ptr();
@@ -484,3 +527,4 @@ const struct retro_keybind *input_config_get_bind_auto(unsigned port, unsigned i
       return &settings->input.autoconf_binds[joy_idx][id];
    return NULL;
 }
+

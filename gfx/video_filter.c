@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -17,6 +17,7 @@
 #include <stdlib.h>
 
 #include <file/file_path.h>
+#include <file/config_file_userdata.h>
 #include <lists/dir_list.h>
 #include <dynamic/dylib.h>
 #include <features/features_cpu.h>
@@ -28,7 +29,6 @@
 #endif
 
 #include "../frontend/frontend_driver.h"
-#include "../config_file_userdata.h"
 #include "../dynamic.h"
 #include "../performance_counters.h"
 #include "../verbosity.h"
@@ -136,10 +136,11 @@ static bool create_softfilter_graph(rarch_softfilter_t *filt,
 {
    unsigned input_fmts, input_fmt, output_fmts, i = 0;
    struct config_file_userdata userdata;
-   char key[64]  = {0};
-   char name[64] = {0};
+   char key[64], name[64];
 
    (void)i;
+
+   key[0] = name[0] = '\0';
 
    snprintf(key, sizeof(key), "filter");
 

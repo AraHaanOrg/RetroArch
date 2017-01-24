@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -17,7 +17,7 @@
 #include "../input_driver.h"
 #include "../../verbosity.h"
 
-static void *nullinput_input_init(void)
+static void *nullinput_input_init(const char *joypad_driver)
 {
    RARCH_ERR("Using the null input driver. RetroArch will ignore you.");
    return (void*)-1;
@@ -29,6 +29,7 @@ static void nullinput_input_poll(void *data)
 }
 
 static int16_t nullinput_input_state(void *data,
+      rarch_joypad_info_t joypad_info,
       const struct retro_keybind **retro_keybinds, unsigned port,
       unsigned device, unsigned idx, unsigned id)
 {

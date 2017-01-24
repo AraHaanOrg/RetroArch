@@ -67,6 +67,7 @@
 #include "core_info.h"
 #include "dynamic.h"
 #include "driver.h"
+#include "input/input_config.h"
 #include "msg_hash.h"
 #include "movie.h"
 #include "dirs.h"
@@ -104,6 +105,7 @@
 enum
 {
    RA_OPT_MENU = 256, /* must be outside the range of a char */
+   RA_OPT_STATELESS,
    RA_OPT_CHECK_FRAMES,
    RA_OPT_PORT,
    RA_OPT_SPECTATE,
@@ -143,7 +145,7 @@ static bool has_set_state_path                          = false;
 static bool has_set_netplay_mode                        = false;
 static bool has_set_netplay_ip_address                  = false;
 static bool has_set_netplay_ip_port                     = false;
-static bool has_set_netplay_delay_frames                = false;
+static bool has_set_netplay_stateless_mode              = false;
 static bool has_set_netplay_check_frames                = false;
 static bool has_set_ups_pref                            = false;
 static bool has_set_bps_pref                            = false;
@@ -339,10 +341,10 @@ static void retroarch_print_help(const char *arg0)
    puts("  -H, --host            Host netplay as user 1.");
    puts("  -C, --connect=HOST    Connect to netplay server as user 2.");
    puts("      --port=PORT       Port used to netplay. Default is 55435.");
-   puts("  -F, --frames=NUMBER   Delay frames when using netplay.");
+   puts("      --stateless       Use \"stateless\" mode for netplay");
+   puts("                        (requires a very fast network).");
    puts("      --check-frames=NUMBER\n"
         "                        Check frames when using netplay.");
-   puts("      --spectate        Connect to netplay server as spectator.");
 #if defined(HAVE_NETWORK_CMD)
    puts("      --command         Sends a command over UDP to an already "
          "running program process.");
@@ -400,7 +402,6 @@ static void retroarch_parse_input(int argc, char *argv[])
 {
    const char *optstring = NULL;
    bool explicit_menu    = false;
-   settings_t *settings  = config_get_ptr();
    global_t  *global     = global_get_ptr();
 
    const struct option opts[] = {
@@ -427,10 +428,9 @@ static void retroarch_parse_input(int argc, char *argv[])
 #ifdef HAVE_NETWORKING
       { "host",         0, NULL, 'H' },
       { "connect",      1, NULL, 'C' },
-      { "frames",       1, NULL, 'F' },
+      { "stateless",    0, NULL, RA_OPT_STATELESS },
       { "check-frames", 1, NULL, RA_OPT_CHECK_FRAMES },
       { "port",         1, NULL, RA_OPT_PORT },
-      { "spectate",     0, NULL, RA_OPT_SPECTATE },
 #if defined(HAVE_NETWORK_CMD)
       { "command",      1, NULL, RA_OPT_COMMAND },
 #endif
@@ -511,7 +511,7 @@ static void retroarch_parse_input(int argc, char *argv[])
       int c = getopt_long(argc, argv, optstring, opts, NULL);
 
 #if 0
-      RARCH_LOG("c is: %c, optarg is: [%s]\n", c, string_is_empty(optarg) ? "" : optarg);
+      fprintf(stderr, "c is: %c (%d), optarg is: [%s]\n", c, c, string_is_empty(optarg) ? "" : optarg);
 #endif
 
       if (c == -1)
@@ -545,7 +545,8 @@ static void retroarch_parse_input(int argc, char *argv[])
                retroarch_fail(1, "retroarch_parse_input()");
             }
             new_port = port -1;
-            settings->input.libretro_device[new_port] = id;
+
+            input_config_set_device(new_port, id);
 
             retroarch_override_setting_set(
                   RARCH_OVERRIDE_SETTING_LIBRETRO_DEVICE, &new_port);
@@ -564,7 +565,7 @@ static void retroarch_parse_input(int argc, char *argv[])
             }
             new_port = port - 1;
 
-            settings->input.libretro_device[new_port] = RETRO_DEVICE_ANALOG;
+            input_config_set_device(new_port, RETRO_DEVICE_ANALOG);
             retroarch_override_setting_set(
                   RARCH_OVERRIDE_SETTING_LIBRETRO_DEVICE, &new_port);
          }
@@ -606,7 +607,7 @@ static void retroarch_parse_input(int argc, char *argv[])
                   retroarch_fail(1, "retroarch_parse_input()");
                }
                new_port = port - 1;
-               settings->input.libretro_device[port - 1] = RETRO_DEVICE_NONE;
+               input_config_set_device(port - 1, RETRO_DEVICE_NONE);
                retroarch_override_setting_set(
                      RARCH_OVERRIDE_SETTING_LIBRETRO_DEVICE, &new_port);
             }
@@ -631,6 +632,8 @@ static void retroarch_parse_input(int argc, char *argv[])
          case 'L':
             if (path_is_directory(optarg))
             {
+               settings_t *settings  = config_get_ptr();
+
                path_clear(RARCH_PATH_CORE);
                strlcpy(settings->directory.libretro, optarg,
                      sizeof(settings->directory.libretro));
@@ -698,45 +701,53 @@ static void retroarch_parse_input(int argc, char *argv[])
             break;
 
          case 'C':
-            retroarch_override_setting_set(
-                  RARCH_OVERRIDE_SETTING_NETPLAY_MODE, NULL);
-            retroarch_override_setting_set(
-                  RARCH_OVERRIDE_SETTING_NETPLAY_IP_ADDRESS, NULL);
-            netplay_driver_ctl(RARCH_NETPLAY_CTL_ENABLE_CLIENT, NULL);
-            strlcpy(settings->netplay.server, optarg,
-                  sizeof(settings->netplay.server));
+            {
+               settings_t *settings  = config_get_ptr();
+               retroarch_override_setting_set(
+                     RARCH_OVERRIDE_SETTING_NETPLAY_MODE, NULL);
+               retroarch_override_setting_set(
+                     RARCH_OVERRIDE_SETTING_NETPLAY_IP_ADDRESS, NULL);
+               netplay_driver_ctl(RARCH_NETPLAY_CTL_ENABLE_CLIENT, NULL);
+               strlcpy(settings->netplay.server, optarg,
+                     sizeof(settings->netplay.server));
+            }
             break;
 
-         case 'F':
-            settings->netplay.delay_frames = strtol(optarg, NULL, 0);
-            retroarch_override_setting_set(
-                  RARCH_OVERRIDE_SETTING_NETPLAY_DELAY_FRAMES, NULL);
+         case RA_OPT_STATELESS:
+            {
+               settings_t *settings  = config_get_ptr();
+               settings->netplay.stateless_mode = true;
+               retroarch_override_setting_set(
+                     RARCH_OVERRIDE_SETTING_NETPLAY_STATELESS_MODE, NULL);
+            }
             break;
 
          case RA_OPT_CHECK_FRAMES:
-            retroarch_override_setting_set(
-                  RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES, NULL);
-            settings->netplay.check_frames = strtoul(optarg, NULL, 0);
+            {
+               settings_t *settings  = config_get_ptr();
+               retroarch_override_setting_set(
+                     RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES, NULL);
+               settings->netplay.check_frames = strtoul(optarg, NULL, 0);
+            }
             break;
 
          case RA_OPT_PORT:
-            retroarch_override_setting_set(
-                  RARCH_OVERRIDE_SETTING_NETPLAY_IP_PORT, NULL);
-            settings->netplay.port = strtoul(optarg, NULL, 0);
-            break;
-
-         case RA_OPT_SPECTATE:
-            retroarch_override_setting_set(
-                  RARCH_OVERRIDE_SETTING_NETPLAY_MODE, NULL);
-            settings->netplay.is_spectate = true;
+            {
+               settings_t *settings  = config_get_ptr();
+               retroarch_override_setting_set(
+                     RARCH_OVERRIDE_SETTING_NETPLAY_IP_PORT, NULL);
+               settings->netplay.port = strtoul(optarg, NULL, 0);
+            }
             break;
 
 #if defined(HAVE_NETWORK_CMD)
          case RA_OPT_COMMAND:
+#ifdef HAVE_COMMAND
             if (command_network_send((const char*)optarg))
                exit(0);
             else
                retroarch_fail(1, "network_cmd_send()");
+#endif
             break;
 #endif
 
@@ -776,9 +787,12 @@ static void retroarch_parse_input(int argc, char *argv[])
             break;
 
          case RA_OPT_NICK:
-            rarch_ctl(RARCH_CTL_USERNAME_SET, NULL);
-            strlcpy(settings->username, optarg,
-                  sizeof(settings->username));
+            {
+               settings_t *settings  = config_get_ptr();
+               rarch_ctl(RARCH_CTL_USERNAME_SET, NULL);
+               strlcpy(settings->username, optarg,
+                     sizeof(settings->username));
+            }
             break;
 
          case RA_OPT_APPENDCONFIG:
@@ -903,6 +917,8 @@ bool retroarch_validate_game_options(char *s, size_t len, bool mkdir)
    const char *game_name                  = NULL;
    rarch_system_info_t *system            = NULL;
 
+   config_directory[0] = core_path[0]     = '\0';
+
    runloop_ctl(RUNLOOP_CTL_SYSTEM_INFO_GET, &system);
 
    if (system)
@@ -913,9 +929,8 @@ bool retroarch_validate_game_options(char *s, size_t len, bool mkdir)
    if (string_is_empty(core_name) || string_is_empty(game_name))
       return false;
 
-   config_directory[0] = core_path[0] = '\0';
-
-   fill_pathname_application_special(config_directory, sizeof(config_directory),
+   fill_pathname_application_special(config_directory,
+         sizeof(config_directory),
          APPLICATION_SPECIAL_DIRECTORY_CONFIG);
 
    /* Concatenate strings into full paths for game_path */
@@ -1065,7 +1080,7 @@ bool retroarch_main_init(int argc, char *argv[])
    {
 #ifdef HAVE_MENU
       /* Check if menu was active prior to core initialization */
-      if (menu_driver_ctl(RARCH_MENU_CTL_IS_ALIVE, NULL))
+      if (menu_driver_is_alive())
       {
          /* Attempt initializing dummy core */
          current_core_type = CORE_TYPE_DUMMY;
@@ -1080,7 +1095,7 @@ bool retroarch_main_init(int argc, char *argv[])
       }
    }
 
-   driver_ctl(RARCH_DRIVER_CTL_INIT_ALL, NULL);
+   drivers_init(DRIVERS_CMD_ALL);
    command_event(CMD_EVENT_COMMAND_INIT, NULL);
    command_event(CMD_EVENT_REMOTE_INIT, NULL);
    command_event(CMD_EVENT_REWIND_INIT, NULL);
@@ -1113,7 +1128,6 @@ bool rarch_ctl(enum rarch_ctl_state state, void *data)
    static bool rarch_bps_pref              = false;
    static bool rarch_ips_pref              = false;
    static bool rarch_patch_blocked         = false;
-   settings_t *settings                    = config_get_ptr();
 #ifdef HAVE_THREAD_STORAGE
    static sthread_tls_t rarch_tls;
    const void *MAGIC_POINTER = (void*)0xB16B00B5;
@@ -1243,7 +1257,7 @@ bool rarch_ctl(enum rarch_ctl_state state, void *data)
          {
             unsigned i;
             for (i = 0; i < MAX_USERS; i++)
-               settings->input.libretro_device[i] = RETRO_DEVICE_JOYPAD;
+               input_config_set_device(i, RETRO_DEVICE_JOYPAD);
          }
          runloop_ctl(RUNLOOP_CTL_HTTPSERVER_INIT, NULL);
          runloop_ctl(RUNLOOP_CTL_MSG_QUEUE_INIT, NULL);
@@ -1310,8 +1324,11 @@ bool rarch_ctl(enum rarch_ctl_state state, void *data)
          menu_driver_ctl(RARCH_MENU_CTL_SET_TOGGLE, NULL);
 #endif
 #ifdef HAVE_OVERLAY
-         if (settings->input.overlay_hide_in_menu)
-            command_event(CMD_EVENT_OVERLAY_DEINIT, NULL);
+         {
+            settings_t *settings                    = config_get_ptr();
+            if (settings->input.overlay_hide_in_menu)
+               command_event(CMD_EVENT_OVERLAY_DEINIT, NULL);
+         }
 #endif
          break;
       case RARCH_CTL_MENU_RUNNING_FINISHED:
@@ -1320,8 +1337,11 @@ bool rarch_ctl(enum rarch_ctl_state state, void *data)
 #endif
          video_driver_set_texture_enable(false, false);
 #ifdef HAVE_OVERLAY
-         if (settings && settings->input.overlay_hide_in_menu)
-            command_event(CMD_EVENT_OVERLAY_INIT, NULL);
+         {
+            settings_t *settings                    = config_get_ptr();
+            if (settings && settings->input.overlay_hide_in_menu)
+               command_event(CMD_EVENT_OVERLAY_INIT, NULL);
+         }
 #endif
          break;
       case RARCH_CTL_IS_MAIN_THREAD:
@@ -1369,8 +1389,8 @@ bool retroarch_override_setting_is_set(enum rarch_override_setting enum_idx, voi
          return has_set_netplay_ip_address;
       case RARCH_OVERRIDE_SETTING_NETPLAY_IP_PORT:
          return has_set_netplay_ip_port;
-      case RARCH_OVERRIDE_SETTING_NETPLAY_DELAY_FRAMES:
-         return has_set_netplay_delay_frames;
+      case RARCH_OVERRIDE_SETTING_NETPLAY_STATELESS_MODE:
+         return has_set_netplay_stateless_mode;
       case RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES:
          return has_set_netplay_check_frames;
       case RARCH_OVERRIDE_SETTING_UPS_PREF:
@@ -1426,8 +1446,8 @@ void retroarch_override_setting_set(enum rarch_override_setting enum_idx, void *
       case RARCH_OVERRIDE_SETTING_NETPLAY_IP_PORT:
          has_set_netplay_ip_port = true;
          break;
-      case RARCH_OVERRIDE_SETTING_NETPLAY_DELAY_FRAMES:
-         has_set_netplay_delay_frames = true;
+      case RARCH_OVERRIDE_SETTING_NETPLAY_STATELESS_MODE:
+         has_set_netplay_stateless_mode = true;
          break;
       case RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES:
          has_set_netplay_check_frames = true;
@@ -1485,8 +1505,8 @@ void retroarch_override_setting_unset(enum rarch_override_setting enum_idx, void
       case RARCH_OVERRIDE_SETTING_NETPLAY_IP_PORT:
          has_set_netplay_ip_port = false;
          break;
-      case RARCH_OVERRIDE_SETTING_NETPLAY_DELAY_FRAMES:
-         has_set_netplay_delay_frames = false;
+      case RARCH_OVERRIDE_SETTING_NETPLAY_STATELESS_MODE:
+         has_set_netplay_stateless_mode = false;
          break;
       case RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES:
          has_set_netplay_check_frames = false;

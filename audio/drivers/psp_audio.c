@@ -1,7 +1,7 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2014-2016 - Ali Bouhlel
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2014-2017 - Ali Bouhlel
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <malloc.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifdef VITA
 #include <psp2/kernel/processmgr.h>
@@ -30,7 +31,6 @@
 #endif
 
 #include "../audio_driver.h"
-#include "../../configuration.h"
 
 typedef struct psp_audio
 {
@@ -119,7 +119,9 @@ static int audioMainLoop(SceSize args, void* argp)
 }
 
 static void *psp_audio_init(const char *device,
-      unsigned rate, unsigned latency)
+      unsigned rate, unsigned latency,
+      unsigned block_frames,
+      unsigned *new_rate)
 {
    psp_audio_t *psp = (psp_audio_t*)calloc(1, sizeof(psp_audio_t));
 
@@ -283,7 +285,7 @@ static bool psp_audio_stop(void *data)
    return true;
 }
 
-static bool psp_audio_start(void *data)
+static bool psp_audio_start(void *data, bool is_shutdown)
 {
    SceKernelThreadInfo info;
    psp_audio_t* psp = (psp_audio_t*)data;

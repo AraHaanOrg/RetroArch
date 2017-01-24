@@ -1,7 +1,7 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
- *  Copyright (C) 2016 - Brad Parker
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2016-2017 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -27,6 +27,7 @@
 #endif
 
 #include "../configuration.h"
+#include "../runloop.h"
 #include "../verbosity.h"
 
 static const gfx_ctx_driver_t *gfx_ctx_drivers[] = {
@@ -69,7 +70,7 @@ static const gfx_ctx_driver_t *gfx_ctx_drivers[] = {
    &gfx_ctx_android,
 #endif
 #if defined(__QNX__)
-   &gfx_ctx_bbqnx,
+   &gfx_ctx_qnx,
 #endif
 #if defined(HAVE_COCOA) || defined(HAVE_COCOATOUCH)
    &gfx_ctx_cocoagl,
@@ -88,6 +89,9 @@ static const gfx_ctx_driver_t *gfx_ctx_drivers[] = {
 #endif
 #if defined(HAVE_VULKAN) && defined(HAVE_VULKAN_DISPLAY)
    &gfx_ctx_khr_display,
+#endif
+#if defined(_WIN32) && !defined(_XBOX)
+   &gfx_ctx_gdi,
 #endif
    &gfx_ctx_null,
    NULL
@@ -124,7 +128,7 @@ bool video_context_driver_find_prev_driver(void)
    settings_t *settings = config_get_ptr();
    int                i = find_video_context_driver_index(
          settings->video.context_driver);
-   
+
    if (i > 0)
    {
       strlcpy(settings->video.context_driver,
@@ -181,18 +185,21 @@ static const gfx_ctx_driver_t *video_context_driver_init(
       enum gfx_ctx_api api, unsigned major,
       unsigned minor, bool hw_render_ctx)
 {
-   settings_t *settings = config_get_ptr();
-
    if (ctx->bind_api(data, api, major, minor))
    {
-      void *ctx_data = ctx->init(data);
+      video_frame_info_t video_info;
+      void       *ctx_data = NULL;
+
+      video_driver_build_info(&video_info);
+
+      ctx_data = ctx->init(&video_info, data);
 
       if (!ctx_data)
          return NULL;
 
       if (ctx->bind_hw_render)
          ctx->bind_hw_render(ctx_data,
-               settings->video.shared_context && hw_render_ctx);
+               video_info.shared_context && hw_render_ctx);
 
       video_context_driver_set_data(ctx_data);
       return ctx;
@@ -233,7 +240,7 @@ static const gfx_ctx_driver_t *video_context_driver_find_driver(void *data,
 
    for (i = 0; gfx_ctx_drivers[i]; i++)
    {
-      const gfx_ctx_driver_t *ctx = 
+      const gfx_ctx_driver_t *ctx =
          video_context_driver_init(data, gfx_ctx_drivers[i], ident,
             api, major, minor, hw_render_ctx);
 
@@ -268,15 +275,17 @@ const gfx_ctx_driver_t *video_context_driver_init_first(void *data,
 
 bool video_context_driver_check_window(gfx_ctx_size_t *size_data)
 {
-   if (     video_context_data 
-         && current_video_context 
+   if (     video_context_data
+         && current_video_context
          && current_video_context->check_window)
    {
+      bool is_shutdown = runloop_ctl(RUNLOOP_CTL_IS_SHUTDOWN, NULL);
       current_video_context->check_window(video_context_data,
             size_data->quit,
             size_data->resize,
             size_data->width,
-            size_data->height, ((unsigned int)*video_driver_get_frame_count_ptr()));
+            size_data->height,
+            is_shutdown);
       return true;
    }
 
@@ -285,7 +294,7 @@ bool video_context_driver_check_window(gfx_ctx_size_t *size_data)
 
 bool video_context_driver_init_image_buffer(const video_info_t *data)
 {
-   if (     current_video_context 
+   if (     current_video_context
          && current_video_context->image_buffer_init
          && current_video_context->image_buffer_init(video_context_data, data))
       return true;
@@ -305,7 +314,7 @@ bool video_context_driver_write_to_image_buffer(gfx_ctx_image_t *img)
 
 bool video_context_driver_get_video_output_prev(void)
 {
-   if (!current_video_context 
+   if (!current_video_context
          || !current_video_context->get_video_output_prev)
       return false;
    current_video_context->get_video_output_prev(video_context_data);
@@ -314,7 +323,7 @@ bool video_context_driver_get_video_output_prev(void)
 
 bool video_context_driver_get_video_output_next(void)
 {
-   if (!current_video_context || 
+   if (!current_video_context ||
          !current_video_context->get_video_output_next)
       return false;
    current_video_context->get_video_output_next(video_context_data);
@@ -398,7 +407,7 @@ bool video_context_driver_get_proc_address(gfx_ctx_proc_address_t *proc)
 
 bool video_context_driver_get_metrics(gfx_ctx_metrics_t *metrics)
 {
-   if (     current_video_context 
+   if (     current_video_context
          && current_video_context->get_metrics
          && current_video_context->get_metrics(video_context_data,
             metrics->type,
@@ -409,16 +418,20 @@ bool video_context_driver_get_metrics(gfx_ctx_metrics_t *metrics)
 
 bool video_context_driver_input_driver(gfx_ctx_input_t *inp)
 {
+   settings_t *settings    = config_get_ptr();
+   const char *joypad_name = settings ? settings->input.joypad_driver : NULL;
+
    if (!current_video_context || !current_video_context->input_driver)
       return false;
    current_video_context->input_driver(
-         video_context_data, inp->input, inp->input_data);
+         video_context_data, joypad_name,
+         inp->input, inp->input_data);
    return true;
 }
 
 bool video_context_driver_suppress_screensaver(bool *bool_data)
 {
-   if (     video_context_data 
+   if (     video_context_data
          && current_video_context
          && current_video_context->suppress_screensaver(
             video_context_data, *bool_data))
@@ -438,21 +451,16 @@ bool video_context_driver_get_ident(gfx_ctx_ident_t *ident)
 
 bool video_context_driver_set_video_mode(gfx_ctx_mode_t *mode_info)
 {
+   video_frame_info_t video_info;
+
    if (!current_video_context || !current_video_context->set_video_mode)
       return false;
-   if (!current_video_context->set_video_mode(
-            video_context_data, mode_info->width,
-            mode_info->height, mode_info->fullscreen))
-      return false;
-   return true;
-}
 
-bool video_context_driver_set_resize(gfx_ctx_mode_t *mode_info)
-{
-   if (!current_video_context)
-      return false;
-   if (!current_video_context->set_resize(
-            video_context_data, mode_info->width, mode_info->height))
+   video_driver_build_info(&video_info);
+
+   if (!current_video_context->set_video_mode(
+            video_context_data, &video_info, mode_info->width,
+            mode_info->height, mode_info->fullscreen))
       return false;
    return true;
 }

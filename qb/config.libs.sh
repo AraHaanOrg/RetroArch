@@ -27,6 +27,9 @@ elif [ "$OS" = 'Win32' ]; then
    SOCKETLIB=-lws2_32
    SOCKETHEADER="#include <winsock2.h>"
    DYLIB=
+elif [ "$OS" = 'Cygwin' ]; then
+   echo "Error: Cygwin is not a supported platform. See https://bot.libretro.com/docs/compilation/windows/"
+   exit 1
 fi
 
 add_define_make DYLIB_LIB "$DYLIB"
@@ -126,7 +129,8 @@ else LIBRETRO="-lretro"
 fi
 
 [ "$HAVE_DYNAMIC" = 'yes' ] || {
-   check_lib_cxx RETRO "$LIBRETRO" retro_init "$DYLIB" "Cannot find libretro, did you forget --with-libretro=\"-lretro\"?"
+   #check_lib RETRO "$LIBRETRO" retro_init "$DYLIB" "Cannot find libretro, did you forget --with-libretro=\"-lretro\"?"
+   check_lib RETRO "$LIBRETRO" "$DYLIB" "Cannot find libretro, did you forget --with-libretro=\"-lretro\"?"
    add_define_make libretro "$LIBRETRO"
 }
 
@@ -146,6 +150,11 @@ if [ "$MAN_DIR" ]; then
    add_define_make MAN_DIR "$MAN_DIR"
 else
    add_define_make MAN_DIR "${PREFIX}/share/man"
+fi
+
+if [ "$OS" = 'DOS' ]; then
+   HAVE_SHADERPIPELINE=no
+   HAVE_LANGEXTRA=no
 fi
 
 if [ "$OS" = 'Win32' ]; then
@@ -394,6 +403,7 @@ check_pkgconf XCB xcb
 [ "$HAVE_X11" = "no" ] && HAVE_XEXT=no && HAVE_XF86VM=no && HAVE_XINERAMA=no && HAVE_XSHM=no
 
 check_pkgconf WAYLAND wayland-egl
+check_pkgconf WAYLAND_CURSOR wayland-cursor
 
 check_pkgconf XKBCOMMON xkbcommon 0.3.2
 check_pkgconf DBUS dbus-1
@@ -446,13 +456,23 @@ if [ "$HAVE_MATERIALUI" != 'no' ] || [ "$HAVE_XMB" != 'no' ] || [ "$HAVE_ZARCH" 
 	if [ "$HAVE_RGUI" = 'no' ]; then
 		HAVE_MATERIALUI=no
 		HAVE_XMB=no
-      HAVE_ZARCH=no
+    HAVE_ZARCH=no
 		echo "Notice: RGUI not available, MaterialUI, XMB and ZARCH will also be disabled."
 	elif [ "$HAVE_OPENGL" = 'no' ] && [ "$HAVE_OPENGLES" = 'no' ] && [ "$HAVE_VULKAN" = 'no' ]; then
-		HAVE_MATERIALUI=no
-		HAVE_XMB=no
-      HAVE_ZARCH=no
-		echo "Notice: Hardware rendering context not available, XMB, MaterialUI and ZARCH will also be disabled."
+    if [ "$OS" = 'Win32' ]; then
+      HAVE_SHADERPIPELINE=no
+      HAVE_VULKAN=no
+		  echo "Notice: Hardware rendering context not available."
+    else
+      if [ "$HAVE_CACA" = 'yes' ]; then
+		    echo "Notice: Hardware rendering context not available."
+      else
+    		HAVE_MATERIALUI=no
+	    	HAVE_XMB=no
+        HAVE_ZARCH=no
+		    echo "Notice: Hardware rendering context not available, XMB, MaterialUI and ZARCH will also be disabled."
+      fi
+    fi
 	fi
 fi
 

@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -78,6 +78,7 @@ enum
    ACTION_OK_DL_CURSOR_MANAGER_LIST,
    ACTION_OK_DL_CORE_UPDATER_LIST,
    ACTION_OK_DL_THUMBNAILS_UPDATER_LIST,
+   ACTION_OK_DL_BROWSE_URL_LIST,
    ACTION_OK_DL_CORE_CONTENT_LIST,
    ACTION_OK_DL_CORE_CONTENT_DIRS_LIST,
    ACTION_OK_DL_CORE_CONTENT_DIRS_SUBDIR_LIST,
@@ -98,6 +99,7 @@ enum
    ACTION_OK_DL_USER_SETTINGS_LIST,
    ACTION_OK_DL_DIRECTORY_SETTINGS_LIST,
    ACTION_OK_DL_PRIVACY_SETTINGS_LIST,
+   ACTION_OK_DL_BROWSE_URL_START,
    ACTION_OK_DL_CONTENT_SETTINGS
 };
 

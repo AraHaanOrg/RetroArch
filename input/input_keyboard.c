@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -21,9 +21,10 @@
 
 #include "input_keyboard.h"
 
+#include "input_driver.h"
+
 #include <encodings/utf.h>
 
-#include "../configuration.h"
 #include "../runloop.h"
 
 struct input_keyboard_line
@@ -60,7 +61,7 @@ static void osk_update_last_codepoint(const char *word)
 
    if (letter[0] == 0)
    {
-      osk_last_codepoint = 0;
+      osk_last_codepoint     = 0;
       osk_last_codepoint_len = 0;
       return;
    }
@@ -72,7 +73,7 @@ static void osk_update_last_codepoint(const char *word)
 
       if (letter[0] == 0)
       {
-         osk_last_codepoint = codepoint;
+         osk_last_codepoint     = codepoint;
          osk_last_codepoint_len = len;
          break;
       }
@@ -83,9 +84,10 @@ static void osk_update_last_codepoint(const char *word)
 
 static void osk_update_last_char(const char c)
 {
-   char array[2] = {0};
+   char array[2];
 
    array[0] = c;
+   array[1] = 0;
 
    osk_update_last_codepoint(array);
 }

@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -32,7 +32,8 @@
 #include "../configuration.h"
 #include "../verbosity.h"
 
-typedef struct {
+typedef struct
+{
    enum overlay_status state;
    enum overlay_image_transfer_status loading_status;
    config_file_t *conf;
@@ -48,7 +49,7 @@ typedef struct {
 
 static void task_overlay_image_done(struct overlay *overlay)
 {
-   overlay->pos = 0;
+   overlay->pos           = 0;
    /* Divide iteration steps by half of total descs if size is even,
     * otherwise default to 8 (arbitrary value for now to speed things up). */
    overlay->pos_increment = (overlay->size / 2) ? (overlay->size / 2) : 8;
@@ -80,6 +81,8 @@ static void task_overlay_load_desc_image(
 
       fill_pathname_resolve_relative(path, loader->overlay_path,
             image_path, sizeof(path));
+
+      image_tex.supports_rgba = video_driver_supports_rgba();
 
       if (image_texture_load(&image_tex, path))
       {
@@ -372,7 +375,7 @@ static void task_overlay_resolve_iterate(retro_task_t *task)
             loader->resolve_pos, loader->size))
    {
       RARCH_ERR("[Overlay]: Failed to resolve next targets.\n");
-      task->cancelled = true;
+      task_set_cancelled(task, true);
       loader->state   = OVERLAY_STATUS_DEFERRED_ERROR;
       return;
    }
@@ -449,7 +452,7 @@ static void task_overlay_deferred_loading(retro_task_t *task)
                {
                   RARCH_ERR("[Overlay]: Failed to load overlay descs for overlay #%u.\n",
                         (unsigned)overlay->pos);
-                  task->cancelled = true;
+                  task_set_cancelled(task, true);
                   loader->state   = OVERLAY_STATUS_DEFERRED_ERROR;
                   break;
                }
@@ -470,7 +473,7 @@ static void task_overlay_deferred_loading(retro_task_t *task)
          loader->loading_status = OVERLAY_IMAGE_TRANSFER_NONE;
          break;
       case OVERLAY_IMAGE_TRANSFER_ERROR:
-         task->cancelled = true;
+         task_set_cancelled(task, true);
          loader->state   = OVERLAY_STATUS_DEFERRED_ERROR;
          break;
    }
@@ -583,6 +586,8 @@ static void task_overlay_deferred_load(retro_task_t *task)
                loader->overlay_path,
                overlay->config.paths.path, sizeof(overlay_resolved_path));
 
+         image_tex.supports_rgba = video_driver_supports_rgba();
+
          if (!image_texture_load(&image_tex, overlay_resolved_path))
          {
             RARCH_ERR("[Overlay]: Failed to load image: %s.\n",
@@ -637,7 +642,7 @@ static void task_overlay_deferred_load(retro_task_t *task)
    return;
 
 error:
-   task->cancelled = true;
+   task_set_cancelled(task, true);
    loader->pos     = 0;
    loader->state   = OVERLAY_STATUS_DEFERRED_ERROR;
 }
@@ -651,7 +656,7 @@ static void task_overlay_free(retro_task_t *task)
    if (loader->overlay_path)
       free(loader->overlay_path);
 
-   if (task->cancelled)
+   if (task_get_cancelled(task))
    {
       for (i = 0; i < overlay->load_images_size; i++)
       {
@@ -687,25 +692,30 @@ static void task_overlay_handler(retro_task_t *task)
          task_overlay_resolve_iterate(task);
          break;
       case OVERLAY_STATUS_DEFERRED_ERROR:
-         task->cancelled = true;
+         task_set_cancelled(task, true);
          break;
       case OVERLAY_STATUS_DEFERRED_DONE:
       default:
       case OVERLAY_STATUS_NONE:
-         task->finished = true;
+         task_set_finished(task, true);
          break;
    }
 
-   if (task->finished && !task->cancelled)
+   if (task_get_finished(task) && !task_get_cancelled(task))
    {
+      settings_t *settings      = config_get_ptr();
       overlay_task_data_t *data = (overlay_task_data_t*)
          calloc(1, sizeof(*data));
 
-      data->overlays = loader->overlays;
-      data->size     = loader->size;
-      data->active   = loader->active;
+      data->overlays        = loader->overlays;
+      data->size            = loader->size;
+      data->active          = loader->active;
+      data->hide_in_menu    = settings->input.overlay_hide_in_menu;
+      data->overlay_enable  = settings->input.overlay_enable;
+      data->overlay_opacity = settings->input.overlay_opacity;
+      data->overlay_scale   = settings->input.overlay_scale;
 
-      task->task_data = data;
+      task_set_data(task, data);
    }
 }
 

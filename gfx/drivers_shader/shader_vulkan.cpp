@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2016 - Hans-Kristian Arntzen
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -2651,6 +2652,7 @@ static unique_ptr<StaticTexture> vulkan_filter_chain_load_lut(VkCommandBuffer cm
       const video_shader_lut *shader)
 {
    texture_image image;
+   unique_ptr<Buffer> buffer;
    VkMemoryRequirements mem_reqs;
    VkImageCreateInfo image_info    = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
    VkImageViewCreateInfo view_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
@@ -2660,7 +2662,11 @@ static unique_ptr<StaticTexture> vulkan_filter_chain_load_lut(VkCommandBuffer cm
    VkImageView view                = VK_NULL_HANDLE;
    VkBufferImageCopy region        = {};
    void *ptr                       = nullptr;
-   unique_ptr<Buffer> buffer;
+
+   image.width              = 0;
+   image.height             = 0;
+   image.pixels             = NULL;
+   image.supports_rgba      = video_driver_supports_rgba();
 
    if (!image_texture_load(&image, shader->path))
       return {};
@@ -2897,7 +2903,8 @@ vulkan_filter_chain_t *vulkan_filter_chain_create_from_preset(
          }
 
          auto itr = find_if(shader->parameters, shader->parameters + shader->num_parameters,
-               [&](const video_shader_parameter &param) {
+               [&](const video_shader_parameter &param)
+               {
                   return meta_param.id == param.id;
                });
 

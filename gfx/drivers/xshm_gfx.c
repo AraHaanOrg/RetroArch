@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2016-2016 - Alfred Agrell
+ *  Copyright (C) 2016-2017 - Alfred Agrell
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -14,7 +14,7 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _XOPEN_SOURCE 700 // TODO: this doesn't really belong here.
+#define _XOPEN_SOURCE 700 /* TODO: this doesn't really belong here. */
 
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +31,8 @@
 #ifdef HAVE_MENU
 #include "../../menu/menu_driver.h"
 #endif
+
+#include "../font_driver.h"
 
 #include "../common/x11_common.h"
 
@@ -94,15 +96,20 @@ static void *xshm_gfx_init(const video_info_t *video,
 
 static bool xshm_gfx_frame(void *data, const void *frame, unsigned width,
       unsigned height, uint64_t frame_count,
-      unsigned pitch, const char *msg)
+      unsigned pitch, const char *msg, video_frame_info_t *video_info)
 {
    xshm_t* xshm = (xshm_t*)data;
    int y;
    
    for (y=0;y<height;y++)
    {
-      memcpy((uint8_t*)xshm->shmInfo.shmaddr + sizeof(uint32_t)*xshm->width*y, (uint8_t*)frame + pitch*y, pitch);
+      memcpy((uint8_t*)xshm->shmInfo.shmaddr + sizeof(uint32_t)*xshm->width*y,
+            (uint8_t*)frame + pitch*y, pitch);
    }
+
+#ifdef HAVE_MENU
+   menu_driver_frame(video_info);
+#endif
    
    XShmPutImage(xshm->display, xshm->wndw, xshm->gc, xshm->image,
                 0, 0, 0, 0, xshm->width, xshm->height, False);
@@ -151,7 +158,7 @@ static void xshm_gfx_viewport_info(void *data, struct video_viewport *vp)
    
 }
 
-static bool xshm_gfx_read_viewport(void *data, uint8_t *buffer)
+static bool xshm_gfx_read_viewport(void *data, uint8_t *buffer, bool is_idle)
 {
    return false;
 }

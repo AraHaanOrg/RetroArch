@@ -1,4 +1,4 @@
-/* Copyright  (C) 2010-2016 The RetroArch team
+/* Copyright  (C) 2010-2017 The RetroArch team
  *
  * ---------------------------------------------------------------------------------------
  * The following license statement only applies to this file (retro_dirent.c).
@@ -33,7 +33,7 @@
 struct RDIR *retro_opendir(const char *name)
 {
 #if defined(_WIN32)
-   char path_buf[1024] = {0};
+   char path_buf[1024];
 #endif
    struct RDIR *rdir = (struct RDIR*)calloc(1, sizeof(*rdir));
 
@@ -41,6 +41,7 @@ struct RDIR *retro_opendir(const char *name)
       return NULL;
 
 #if defined(_WIN32)
+   path_buf[0] = '\0';
    snprintf(path_buf, sizeof(path_buf), "%s\\*", name);
    rdir->directory = FindFirstFile(path_buf, &rdir->entry);
 #elif defined(VITA) || defined(PSP)
@@ -76,10 +77,9 @@ int retro_readdir(struct RDIR *rdir)
 #if defined(_WIN32)
    if(rdir->next)
       return (FindNextFile(rdir->directory, &rdir->entry) != 0);
-   else {
-      rdir->next = true;
-      return (rdir->directory != INVALID_HANDLE_VALUE);
-   }
+
+   rdir->next = true;
+   return (rdir->directory != INVALID_HANDLE_VALUE);
 #elif defined(VITA) || defined(PSP)
    return (sceIoDread(rdir->directory, &rdir->entry) > 0);
 #elif defined(__CELLOS_LV2__)

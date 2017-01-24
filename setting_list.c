@@ -32,7 +32,6 @@
 #include "configuration.h"
 #include "config.def.h"
 #include "input/input_config.h"
-#include "tasks/tasks_internal.h"
 #include "setting_list.h"
 
 rarch_setting_t setting_terminator_setting(void)
@@ -101,13 +100,6 @@ bool settings_list_append(rarch_setting_t **list,
    }
 
    return true;
-}
-
-enum setting_type setting_get_type(rarch_setting_t *setting)		
-{		
-   if (!setting)		
-      return ST_NONE;		
-   return setting->type;		
 }
 
 unsigned setting_get_bind_type(rarch_setting_t *setting)

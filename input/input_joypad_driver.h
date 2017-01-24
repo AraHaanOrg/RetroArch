@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2017 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -26,6 +26,13 @@
 RETRO_BEGIN_DECLS
 
 typedef struct rarch_joypad_driver input_device_driver_t;
+
+typedef struct rarch_joypad_info
+{
+   unsigned joy_idx;
+   const struct retro_keybind *auto_binds;
+   float axis_threshold;
+} rarch_joypad_info_t;
 
 struct rarch_joypad_driver
 {
@@ -124,6 +131,7 @@ void input_conv_analog_id_to_bind_id(unsigned idx, unsigned ident,
  * false (0).
  **/
 bool input_joypad_pressed(const input_device_driver_t *driver,
+      rarch_joypad_info_t joypad_info,
       unsigned port, const void *binds, unsigned key);
 
 /**
@@ -146,6 +154,7 @@ bool input_joypad_pressed(const input_device_driver_t *driver,
  * Returns: analog value on success, otherwise 0.
  **/
 int16_t input_joypad_analog(const input_device_driver_t *driver,
+      rarch_joypad_info_t joypad_info,
       unsigned port, unsigned idx, unsigned ident,
       const void *binds);
 
@@ -208,6 +217,8 @@ bool input_joypad_hat_raw(const input_device_driver_t *driver,
 const char *input_joypad_name(const input_device_driver_t *driver,
       unsigned port);
 
+bool input_config_get_bind_idx(unsigned port, unsigned *joy_idx_real);
+
 extern input_device_driver_t dinput_joypad;
 extern input_device_driver_t linuxraw_joypad;
 extern input_device_driver_t parport_joypad;
@@ -225,6 +236,7 @@ extern input_device_driver_t android_joypad;
 extern input_device_driver_t qnx_joypad;
 extern input_device_driver_t null_joypad;
 extern input_device_driver_t mfi_joypad;
+extern input_device_driver_t dos_joypad;
 
 RETRO_END_DECLS
 

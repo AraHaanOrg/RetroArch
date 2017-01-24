@@ -1,4 +1,4 @@
-/* Copyright  (C) 2010-2016 The RetroArch team
+/* Copyright  (C) 2010-2017 The RetroArch team
  *
  * ---------------------------------------------------------------------------------------
  * The following license statement only applies to this file (net_socket.c).
@@ -78,7 +78,11 @@ ssize_t socket_receive_all_nonblocking(int fd, bool *error,
       return ret;
 
    if (ret == 0)
+   {
+      /* Socket closed */
+      *error = true;
       return -1;
+   }
 
    if (isagain(ret))
       return 0;
@@ -138,6 +142,7 @@ int socket_select(int nfds, fd_set *readfs, fd_set *writefds,
 #if defined(__CELLOS_LV2__)
    return socketselect(nfds, readfs, writefds, errorfds, timeout);
 #elif defined(VITA)
+   extern int retro_epoll_fd;
    SceNetEpollEvent ev = {0};
 
    ev.events = SCE_NET_EPOLLIN | SCE_NET_EPOLLHUP;
@@ -177,6 +182,36 @@ int socket_send_all_blocking(int fd, const void *data_, size_t size,
    }
 
    return true;
+}
+
+ssize_t socket_send_all_nonblocking(int fd, const void *data_, size_t size,
+      bool no_signal)
+{
+   const uint8_t *data = (const uint8_t*)data_;
+   ssize_t sent = 0;
+
+   while (size)
+   {
+      ssize_t ret = send(fd, (const char*)data, size,
+            no_signal ? MSG_NOSIGNAL : 0);
+      if (ret < 0)
+      {
+         if (isagain(ret))
+            break;
+
+         return -1;
+      }
+      else if (ret == 0)
+      {
+         break;
+      }
+
+      data += ret;
+      size -= ret;
+      sent += ret;
+   }
+
+   return sent;
 }
 
 bool socket_bind(int fd, void *data)
